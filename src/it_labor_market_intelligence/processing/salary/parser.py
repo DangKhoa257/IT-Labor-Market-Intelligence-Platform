@@ -79,8 +79,7 @@ def _period(text: str) -> tuple[SalaryPeriod | None, list[str]]:
         "hour": r"/\s*(?:h|hr|hour)\b|\b(?:per\s+)?hour(?:ly)?\b|\b(?:mỗi\s+)?giờ\b",
         "month": r"/\s*(?:mo|month)\b|\b(?:per\s+)?month(?:ly)?\b|\b(?:mỗi\s+)?tháng\b",
         "year": (
-            r"/\s*(?:yr|year)\b|\b(?:per\s+)?year(?:ly)?\b|"
-            r"\bannual(?:ly)?\b|\b(?:mỗi\s+)?năm\b"
+            r"/\s*(?:yr|year)\b|\b(?:per\s+)?year(?:ly)?\b|" r"\bannual(?:ly)?\b|\b(?:mỗi\s+)?năm\b"
         ),
     }
     found = [period for period, pattern in patterns.items() if re.search(pattern, text)]

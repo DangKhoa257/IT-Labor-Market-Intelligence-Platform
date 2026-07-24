@@ -36,9 +36,11 @@ def _salary_summary(records: list[dict]) -> dict[str, Any]:
             "median": str(median(ordered)),
             "min": str(ordered[0]),
             "max": str(ordered[-1]),
-            "quartiles": [str(item) for item in quantiles(ordered, n=4, method="inclusive")]
-            if len(ordered) >= 2
-            else [],
+            "quartiles": (
+                [str(item) for item in quantiles(ordered, n=4, method="inclusive")]
+                if len(ordered) >= 2
+                else []
+            ),
         }
     return results
 

@@ -109,8 +109,7 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "ERP",
         "erp",
         re.compile(
-            r"\b(?:sap|erp|dynamics 365|oracle erp|odoo)\s+"
-            r"(?:consultant|developer|engineer)\b",
+            r"\b(?:sap|erp|dynamics 365|oracle erp|odoo)\s+" r"(?:consultant|developer|engineer)\b",
             re.I,
         ),
     ),

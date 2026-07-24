@@ -236,19 +236,21 @@ def validate_record(record: dict[str, Any]) -> list[dict[str, Any]]:
             )
         )
     return [
-        finding.__dict__
-        if hasattr(finding, "__dict__")
-        else {
-            "field_name": finding.field_name,
-            "code": finding.code,
-            "message": finding.message,
-            "severity": finding.severity,
-            "observed_value": finding.observed_value,
-            "expected_rule": finding.expected_rule,
-            "record_identifier": finding.record_identifier,
-            "source": finding.source,
-            "provenance_reference": finding.provenance_reference,
-        }
+        (
+            finding.__dict__
+            if hasattr(finding, "__dict__")
+            else {
+                "field_name": finding.field_name,
+                "code": finding.code,
+                "message": finding.message,
+                "severity": finding.severity,
+                "observed_value": finding.observed_value,
+                "expected_rule": finding.expected_rule,
+                "record_identifier": finding.record_identifier,
+                "source": finding.source,
+                "provenance_reference": finding.provenance_reference,
+            }
+        )
         for finding in findings
     ]
 

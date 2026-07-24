@@ -38,11 +38,11 @@ def compare_records(left: dict[str, Any], right: dict[str, Any]) -> dict[str, An
     classification = (
         "DISTINCT"
         if explicit_company_conflict
-        else "PROBABLE_DUPLICATE"
-        if score >= 0.8
-        else "POSSIBLE_DUPLICATE"
-        if score >= 0.6
-        else "DISTINCT"
+        else (
+            "PROBABLE_DUPLICATE"
+            if score >= 0.8
+            else "POSSIBLE_DUPLICATE" if score >= 0.6 else "DISTINCT"
+        )
     )
     return {
         "classification": classification,
