@@ -1,0 +1,140 @@
+{
+  "active_job_count": 19,
+  "adapter_version": "topdev.v1",
+  "closed_job_count": 0,
+  "closed_state_counts": {
+    "ACTIVE": 19,
+    "CLOSED": 0,
+    "EXPIRED": 0,
+    "UNKNOWN": 0
+  },
+  "discovered_job_detail_urls": 30,
+  "duplicate_records": 0,
+  "experience_parsing_success": {
+    "eligible_records": 16,
+    "rate": 1.0,
+    "successful_records": 16
+  },
+  "expired_job_count": 0,
+  "failed_records": 0,
+  "field_coverage": {
+    "closed_state": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "closed_state_provenance": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "collected_at": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "company_name_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "content_hash": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "description_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "employment_type_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "experience_raw": {
+      "count": 16,
+      "rate": 0.8421
+    },
+    "expires_at_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "location_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "posted_at_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "salary_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "skills_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "source": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "source_category_raw": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "source_job_id": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "source_url": {
+      "count": 19,
+      "rate": 1.0
+    },
+    "title_raw": {
+      "count": 19,
+      "rate": 1.0
+    }
+  },
+  "invalid_page_types": 0,
+  "it_records_accepted": 19,
+  "it_records_incorrectly_rejected": 0,
+  "null_rates": {
+    "closed_state": 0.0,
+    "closed_state_provenance": 0.0,
+    "collected_at": 0.0,
+    "company_name_raw": 0.0,
+    "content_hash": 0.0,
+    "description_raw": 0.0,
+    "employment_type_raw": 0.0,
+    "experience_raw": 0.1579,
+    "expires_at_raw": 0.0,
+    "location_raw": 0.0,
+    "posted_at_raw": 0.0,
+    "salary_raw": 0.0,
+    "skills_raw": 0.0,
+    "source": 0.0,
+    "source_category_raw": 0.0,
+    "source_job_id": 0.0,
+    "source_url": 0.0,
+    "title_raw": 0.0
+  },
+  "pages_fetched": 30,
+  "pilot_limit": 30,
+  "real_non_it_records_rejected": 11,
+  "rejected_records": 11,
+  "rejection_reasons": {
+    "insufficient_it_evidence": 3,
+    "source_tags_non_it": 8
+  },
+  "run_started_at": "2026-07-24T13:56:20.929126+00:00",
+  "runtime_seconds": 97.39,
+  "salary_parsing_success": {
+    "eligible_records": 19,
+    "rate": 1.0,
+    "successful_records": 19
+  },
+  "skill_extraction_coverage": {
+    "rate": 0.6842,
+    "records_with_matches": 13
+  },
+  "source": "topdev",
+  "successful_records": 19,
+  "unknown_state_job_count": 0,
+  "urls_discovered": 30
+}

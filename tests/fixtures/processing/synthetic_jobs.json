@@ -1,0 +1,24 @@
+{
+  "data_classification": "SYNTHETIC_TEST_DATA",
+  "warning": "SYNTHETIC_TEST_DATA / EXAMPLE_NOT_REAL_DATA: never use as a labor-market observation.",
+  "records": [
+    {
+      "source": "SYNTHETIC_TEST_DATA",
+      "source_job_id": "synthetic-001",
+      "source_url": "https://invalid.example/jobs/synthetic-001",
+      "title_raw": "Senior Backend Engineer",
+      "description_raw": "SYNTHETIC_TEST_DATA / EXAMPLE_NOT_REAL_DATA. Experience with Python, Java and PostgreSQL.",
+      "salary_raw": "20-30 triệu VND/tháng gross",
+      "experience_raw": "Tối thiểu 3 năm kinh nghiệm"
+    },
+    {
+      "source": "SYNTHETIC_TEST_DATA",
+      "source_job_id": "synthetic-002",
+      "source_url": "https://invalid.example/jobs/synthetic-002",
+      "title_raw": "Unknown Technology Role",
+      "description_raw": "SYNTHETIC_TEST_DATA / EXAMPLE_NOT_REAL_DATA. English communication required.",
+      "salary_raw": "Thỏa thuận",
+      "experience_raw": "Không yêu cầu kinh nghiệm"
+    }
+  ]
+}

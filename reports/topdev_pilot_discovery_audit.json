@@ -1,0 +1,877 @@
+{
+  "after_fix_discovery_method": "curated IT listing pages 1-2",
+  "after_fix_pages": [
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2121028",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Data Analytics",
+        "Big Data",
+        "Data Visualization"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-cao-cap-chuyen-gia-kiem-dinh-mo-hinh-kinh-doanh-senior-business-model-validation-analyst-bi-khoi-du-lieu-2026td453781-mbbank-2121028",
+      "title_raw": "Chuyên viên cao cấp, Chuyên gia Kiểm định Mô hình kinh doanh - Senior Business Model Validation Analyst (BI) - Khối Dữ liệu (2026TD453781)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120995",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "AutoCAD",
+        "Revit"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ky-su-xay-dung-trien-khai-ban-ve-cop-pha-nhom-thu-nhap-tu-12-trieu-15-trieu-khong-yeu-cau-kinh-nghiem-cong-ty-tnhh-kumkang-kind-viet-nam-2120995",
+      "title_raw": "Kỹ Sư Xây Dựng / Triển Khai Bản Vẽ Cốp Pha Nhôm (Thu Nhập Từ 12 Triệu - 15 Triệu) - Không Yêu Cầu Kinh Nghiệm"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120924",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Marketing",
+        "Content",
+        "TikTok"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/performance-creative-specialist-ua-app-game-crossian-2120924",
+      "title_raw": "Performance Creative Specialist (UA - App/Game)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2117994",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "CAD"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ky-su-thiet-ke-cong-ty-co-phan-coasia-cm-vina-2117994",
+      "title_raw": "Kỹ Sư Thiết Kế"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120663",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Business Analyst",
+        "Sales Admin",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/strategic-planning-intern-cong-ty-tnhh-my-pham-lg-vina-2120663",
+      "title_raw": "STRATEGIC PLANNING INTERN"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120376",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Linux",
+        "MySQL",
+        "Cloud"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-giai-phap-cloud-data-center-va-an-toan-thong-tin-mobifone-it-2120376",
+      "title_raw": "Chuyên viên Giải pháp Cloud, Data Center và An toàn thông tin"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120123",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Backend",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "ASP.NET",
+        "C#",
+        "SQL",
+        ".NET",
+        "Back-End",
+        "Docker",
+        "MVC 5"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/senior-net-c-backend-developer-clearstone-software-2120123",
+      "title_raw": "Senior .NET / C# Backend Developer"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115963",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "UI/UX",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "UX/UI Design",
+        "Figma"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ux-ui-designer-stock-trading-system-daoukiwoom-innovation-2115963",
+      "title_raw": "UX/UI Designer (Stock Trading System)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2121033",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Docker",
+        "FastAPI"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/pho-phong-cong-nghe-mo-hinh-deputy-head-of-machine-learning-engineering-khoi-du-lieu-2026td456609-mbbank-2121033",
+      "title_raw": "Phó phòng Công nghệ Mô hình - Deputy Head of Machine Learning Engineering - Khối Dữ liệu (2026TD456609)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2116899",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "insufficient_it_evidence",
+      "source_category_raw": "Information Technology",
+      "source_tags": [],
+      "source_url": "https://topdev.vn/viec-lam/nhan-vien-van-hanh-cong-ty-tnhh-mot-thanh-vien-seen-mien-nam-2116899",
+      "title_raw": "Nhân Viên Vận Hành"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2116459",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "AI/Machine Learning",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "NodeJS",
+        "AI"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ai-engineer-cong-ty-tnhh-airquay-vina-2116459",
+      "title_raw": "AI Engineer"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115968",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "DevOps/Cloud/SRE",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "DevOps",
+        "Docker",
+        "AWS",
+        "Cloud",
+        "CI/CD",
+        "Kubernetes",
+        "Infrastructure"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/hn-devops-engineer-aetosky-pte-ltd-2115968",
+      "title_raw": "[HN] DevOps Engineer"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2121039",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "AI/Machine Learning",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "Docker"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-cao-cap-cong-nghe-mo-hinh-senior-machine-learning-engineer-khoi-du-lieu-2026td456629-mbbank-2121039",
+      "title_raw": "Chuyên viên Cao cấp Công nghệ Mô hình - Senior Machine Learning Engineer - Khối Dữ liệu (2026TD456629)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115309",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Cloud",
+        "AI",
+        "Kubernetes",
+        "Infrastructure",
+        "Solution Architect"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ai-solution-architect-cyberlogitec-vietnam-co-ltd-2115309",
+      "title_raw": "AI Solution Architect"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115405",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Linux",
+        "Oracle",
+        "PostgreSql"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/dba-cong-ty-tnhh-samsung-sds-viet-nam-2115405",
+      "title_raw": "DBA"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2120380",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Server",
+        "Cloud",
+        "Network"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-tu-van-thiet-ke-giai-phap-cntt-mobifone-it-2120380",
+      "title_raw": "Chuyên viên tư vấn thiết kế giải pháp CNTT"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121191",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "UX/UI Design",
+        "Game Artist",
+        "UI Design"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/game-live-ops-game-ui-ux-artist-supercent-vietnam-2121191",
+      "title_raw": "[Game Live-Ops]_GAME UI/UX Artist"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121007",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Backend",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Oracle",
+        "Java",
+        "MySQL",
+        "MongoDB",
+        "Redis",
+        "PostgreSql",
+        "Spring Boot"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/middle-senior-backend-engineer-java-go-khoi-cong-nghe-thong-tin-2025td923-mbbank-2121007",
+      "title_raw": "(Middle, Senior) BackEnd Engineer (Java, Go) - Khối Công nghệ thông tin (2025TD923)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2120381",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Server",
+        "Database",
+        "Network"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-trien-khai-va-van-hanh-ha-tang-cntt-database-server-storage-network-mobifone-it-2120381",
+      "title_raw": "Chuyên viên Triển khai và Vận hành Hạ tầng CNTT (Database/Server/Storage/Network)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121008",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "Golang",
+        "C/C++",
+        "AI",
+        "PostgreSql",
+        "Tensorflow",
+        "Computer Vision"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ai-software-engineer-python-go-c-c-backend-ai-agents-khoi-cong-nghe-thong-tin-2026td450888-mbbank-2121008",
+      "title_raw": "AI Software Engineer (Python/Go/C/C++ Backend & AI Agents) - Khối Công nghệ thông tin (2026TD450888)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121192",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Unity",
+        "C#",
+        "Game Developer"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/game-live-ops-mobile-game-developer-senior-supercent-vietnam-2121192",
+      "title_raw": "[Game Live-Ops]_Mobile Game Developer Senior"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121193",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Unity",
+        "C#",
+        "Game Developer"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/playable-ads-mobile-game-developer-supercent-vietnam-2121193",
+      "title_raw": "[Playable ads]_Mobile Game Developer"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121169",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "IT Comtor",
+        "Korean",
+        "HR"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-it-comtor-supercent-vietnam-2121169",
+      "title_raw": "Korean IT Comtor"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2120703",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Talent Acquisition"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/talent-acquisition-staff-supercent-vietnam-2120703",
+      "title_raw": "Talent Acquisition Staff"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2119651",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "insufficient_it_evidence",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Photoshop",
+        "Illustrator",
+        "Figma"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/brand-graphic-designer-supercent-vietnam-2119651",
+      "title_raw": "Brand Graphic Designer"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2119723",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Game",
+        "English",
+        "Social Media"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/xp-hero-game-community-manager-fluent-in-english-supercent-vietnam-2119723",
+      "title_raw": "[XP HERO]_Game Community Manager (Fluent in English)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2118919",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "insufficient_it_evidence",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Microsoft",
+        "Korean"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-candidates-ga-leader-supercent-vietnam-2118919",
+      "title_raw": "(Korean Candidates) GA Leader"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121009",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "Golang",
+        "C/C++",
+        "AI",
+        "PostgreSql",
+        "Tensorflow",
+        "Computer Vision"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/agentic-engineer-python-go-c-c-backend-ai-agents-khoi-cong-nghe-thong-tin-2026td450887-mbbank-2121009",
+      "title_raw": "Agentic Engineer (Python/Go/C/C++ Backend & AI Agents) - Khối Công nghệ thông tin (2026TD450887)"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2118937",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Kế toán"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-candidates-accounting-supercent-vietnam-2118937",
+      "title_raw": "(Korean Candidates) Accounting"
+    },
+    {
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2118964",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Business Coordinator",
+        "Business Development"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-candidates-business-operations-associate-supercent-vietnam-2118964",
+      "title_raw": "(Korean Candidates) Business Operations Associate"
+    }
+  ],
+  "before_fix_discovery_method": "global job sitemap pages 1-2",
+  "before_fix_pages": [
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121362",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Product Owner",
+        "Business Analyst",
+        "AI"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/ai-solution-analyst-ai-product-specialist-linkq-2121362",
+      "title_raw": "AI Solution Analyst / AI Product Specialist"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121361",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "JavaScript",
+        "SQL",
+        "NextJS"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-phat-trien-ung-dung-cong-ty-co-phan-tap-doan-trung-thuy-2121361",
+      "title_raw": "CHUYÊN VIÊN PHÁT TRIỂN ỨNG DỤNG"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121360",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Backend",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Java",
+        "SQL",
+        "Spring Boot"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/java-developer-dtn-e-commerce-software-company-limited-2121360",
+      "title_raw": "Java Developer"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121359",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/follow-up-customer-service-night-shift-salary-up-to-2000-cong-ty-tnhh-ad-astra-2121359",
+      "title_raw": "Follow-Up Customer Service (Night Shift) - Salary Up To $2000"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121358",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/giam-doc-hdbank-tinh-phu-yen-tinh-ninh-thuan-tinh-quang-ngai-tinh-binh-thuan-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121358",
+      "title_raw": "Giám đốc HDBank - Tỉnh Phú Yên | Tỉnh Ninh Thuận | Tỉnh Quảng Ngãi | Tỉnh Bình Thuận"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121357",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng",
+        "Tài Chính"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-gia-chuyen-vien-cao-cap-quan-ly-chat-luong-no-ngan-hang-doanh-nghiep-tp-ho-chi-minh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121357",
+      "title_raw": "Chuyên gia/Chuyên viên cao cấp Quản lý chất lượng nợ - Ngân hàng doanh nghiệp - TP. Hồ Chí Minh"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121356",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-cao-cap-tiep-thi-so-digital-marketing-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121356",
+      "title_raw": "Chuyên viên Cao Cấp Tiếp thị số (Digital Marketing)"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121355",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Marketing",
+        "Ngân Hàng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-cao-cap-tiep-thi-san-pham-dich-vu-product-marketing-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121355",
+      "title_raw": "Chuyên viên Cao Cấp Tiếp thị Sản phẩm dịch vụ (Product Marketing)"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121354",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Sales",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/quan-ly-cua-hang-bac-giang-cong-ty-co-phan-intellife-2121354",
+      "title_raw": "Quản lý cửa hàng Bắc Giang"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121353",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Sales",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/truong-ca-ban-hang-tokyolife-ninh-binh-cong-ty-co-phan-intellife-2121353",
+      "title_raw": "Trưởng Ca Bán Hàng TokyoLife Ninh Bình"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121352",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Sales",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/nhan-vien-ban-hang-thoi-trang-tokyolife-da-nang-cong-ty-co-phan-intellife-2121352",
+      "title_raw": "Nhân viên bán hàng thời trang TokyoLife Đà Nẵng"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121351",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Kế toán"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/nhan-vien-ke-toan-thanh-toan-cong-ty-co-phan-intellife-2121351",
+      "title_raw": "Nhân viên Kế Toán Thanh Toán"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121350",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Logistics / Warehouse / Transportation"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/nhan-vien-kiem-soat-du-lieu-kho-ec-lam-viec-tai-khoang-mai-thach-that-cong-ty-co-phan-intellife-2121350",
+      "title_raw": "Nhân viên Kiểm soát dữ liệu kho EC - Làm việc tại Khoang Mái, Thạch Thất"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121349",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng",
+        "Tài Chính"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-gia-phe-duyet-cap-c1-hoi-so-tp-ho-chi-minh-tp-ho-chi-minh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121349",
+      "title_raw": "Chuyên gia phê duyệt Cấp C1 - Hội sở TP. Hồ Chí Minh | TP. Hồ Chí Minh"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121348",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/giam-doc-qhkh-dinh-che-tai-chinh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121348",
+      "title_raw": "Giám đốc QHKH Định chế tài chính"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121347",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Marketing",
+        "Sales",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/cong-tac-vien-phu-live-quan-12-hcm-cong-ty-co-phan-intellife-2121347",
+      "title_raw": "Công tác viên Phụ Live - Quận 12 HCM"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121346",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng",
+        "Tài Chính"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-gia-chuyen-vien-cao-cap-quan-ly-hieu-suat-ban-mang-hieu-suat-tp-ho-chi-minh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121346",
+      "title_raw": "Chuyên gia/ Chuyên viên cao cấp Quản lý hiệu suất bán - mảng hiệu suất - TP. Hồ Chí Minh"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121345",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Marketing",
+        "TikTok"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/nhan-vien-van-hanh-san-thuong-mai-dien-tu-cong-ty-co-phan-intellife-2121345",
+      "title_raw": "Nhân viên vận hành sàn thương mại điện tử"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121344",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ngân Hàng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-cao-cap-tai-tham-dinh-khdn-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121344",
+      "title_raw": "Chuyên viên cao cấp tái thẩm định KHDN"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121343",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Sales",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/truong-ca-ban-hang-hcm-cong-ty-co-phan-intellife-2121343",
+      "title_raw": "Trưởng Ca Bán Hàng HCM"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121342",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/quan-he-khach-hang-doanh-nghiep-tinh-khanh-hoa-tinh-ninh-thuan-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121342",
+      "title_raw": "Quan h? kh?ch h?ng doanh nghi?p - T?nh Kh?nh Ho? | T?nh Ninh Thu?n"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121341",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Sales",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/quan-ly-cua-hang-khu-vuc-hai-duong-cong-ty-co-phan-intellife-2121341",
+      "title_raw": "Qu?n L? C?a H?ng khu v?c H?i D??ng"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121340",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Legal/Law"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/nhan-vien-phap-che-cong-ty-co-phan-intellife-2121340",
+      "title_raw": "Nh?n vi?n Ph?p ch?"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121339",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/khach-hang-ca-nhan-tinh-dak-nong-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121339",
+      "title_raw": "Kh?ch h?ng c? nh?n - T?nh ??k N?ng"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121338",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/gdv-pgd-cam-ranh-tinh-khanh-hoa-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121338",
+      "title_raw": "GDV PGD CAM RANH - T?nh Kh?nh Ho?"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121337",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng",
+        "T?i Ch?nh",
+        "Ki?m to?n"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-cao-cap-quan-he-nha-dau-tu-ir-tp-ho-chi-minh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121337",
+      "title_raw": "Chuy?n vi?n cao c?p Quan h? nh? ??u t? (IR) - TP. H? Ch? Minh"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121336",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-soan-thao-thanh-pho-ha-noi-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121336",
+      "title_raw": "Chuy?n vi?n So?n th?o - Th?nh ph? H? N?i"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121335",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-quan-ly-tin-dung-thanh-pho-ha-noi-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121335",
+      "title_raw": "Chuy?n vi?n Qu?n l? t?n d?ng - Th?nh ph? H? N?i"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121334",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-phong-chong-rua-tien-tp-ho-chi-minh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121334",
+      "title_raw": "Chuy?n vi?n Ph?ng ch?ng r?a ti?n - TP. H? Ch? Minh"
+    },
+    {
+      "discovery_method": "global_job_sitemap_pages_1_2",
+      "extracted_source_job_id": "2121333",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "non_it_scope",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Ng?n H?ng"
+      ],
+      "source_url": "https://topdev.vn/detail-jobs/chuyen-vien-quan-he-khach-hang-doanh-nghiep-ro-tinh-binh-duong-tinh-binh-phuoc-tinh-ba-ria-vung-tau-tinh-tay-ninh-ngan-hang-thuong-mai-co-phan-phat-trien-thanh-pho-ho-chi-minh-hdbank-2121333",
+      "title_raw": "Chuy?n vi?n Quan h? kh?ch h?ng doanh nghi?p (RO) - T?nh B?nh D??ng | T?nh B?nh Ph??c | T?nh B? R?a - V?ng T?u | T?nh T?y Ninh"
+    }
+  ],
+  "description_fields_retained": false,
+  "diagnostic_note": "JSON-LD industry is Information Technology on both IT and non-IT old-feed pages; source tags and curated listing provenance are required.",
+  "source": "topdev"
+}

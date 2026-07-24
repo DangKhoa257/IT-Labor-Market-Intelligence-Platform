@@ -1,0 +1,762 @@
+{
+  "description_fields_retained": false,
+  "pages": [
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:28.529216+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-16T23:59:59.999999+07:00",
+        "raw_value": "2026-08-16",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120995",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "AutoCAD",
+        "Revit"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ky-su-xay-dung-trien-khai-ban-ve-cop-pha-nhom-thu-nhap-tu-12-trieu-15-trieu-khong-yeu-cau-kinh-nghiem-cong-ty-tnhh-kumkang-kind-viet-nam-2120995",
+      "title_raw": "Kỹ Sư Xây Dựng / Triển Khai Bản Vẽ Cốp Pha Nhôm (Thu Nhập Từ 12 Triệu - 15 Triệu) - Không Yêu Cầu Kinh Nghiệm"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:32.089157+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-15T23:59:59.999999+07:00",
+        "raw_value": "2026-08-15",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120924",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Marketing",
+        "Content",
+        "TikTok"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/performance-creative-specialist-ua-app-game-crossian-2120924",
+      "title_raw": "Performance Creative Specialist (UA - App/Game)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:35.231689+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-19T23:59:59.999999+07:00",
+        "raw_value": "2026-08-19",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2121028",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Data Analytics",
+        "Big Data",
+        "Data Visualization"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-cao-cap-chuyen-gia-kiem-dinh-mo-hinh-kinh-doanh-senior-business-model-validation-analyst-bi-khoi-du-lieu-2026td453781-mbbank-2121028",
+      "title_raw": "Chuyên viên cao cấp, Chuyên gia Kiểm định Mô hình kinh doanh - Senior Business Model Validation Analyst (BI) - Khối Dữ liệu (2026TD453781)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:38.239556+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-05T23:59:59.999999+07:00",
+        "raw_value": "2026-08-05",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2117994",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "CAD"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ky-su-thiet-ke-cong-ty-co-phan-coasia-cm-vina-2117994",
+      "title_raw": "Kỹ Sư Thiết Kế"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:41.041174+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-13T23:59:59.999999+07:00",
+        "raw_value": "2026-08-13",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120663",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Business Analyst",
+        "Sales Admin",
+        "Business/Sales"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/strategic-planning-intern-cong-ty-tnhh-my-pham-lg-vina-2120663",
+      "title_raw": "STRATEGIC PLANNING INTERN"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:44.917035+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-12T23:59:59.999999+07:00",
+        "raw_value": "2026-08-12",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120376",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Linux",
+        "MySQL",
+        "Cloud"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-giai-phap-cloud-data-center-va-an-toan-thong-tin-mobifone-it-2120376",
+      "title_raw": "Chuyên viên Giải pháp Cloud, Data Center và An toàn thông tin"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:47.878574+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-09T23:59:59.999999+07:00",
+        "raw_value": "2026-08-09",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2120123",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Backend",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "ASP.NET",
+        "C#",
+        "SQL",
+        ".NET",
+        "Back-End",
+        "Docker",
+        "MVC 5"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/senior-net-c-backend-developer-clearstone-software-2120123",
+      "title_raw": "Senior .NET / C# Backend Developer"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:51.113207+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-07-29T23:59:59.999999+07:00",
+        "raw_value": "2026-07-29",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115963",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "UI/UX",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "UX/UI Design",
+        "Figma"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ux-ui-designer-stock-trading-system-daoukiwoom-innovation-2115963",
+      "title_raw": "UX/UI Designer (Stock Trading System)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:54.170875+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-19T23:59:59.999999+07:00",
+        "raw_value": "2026-08-19",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2121033",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Docker",
+        "FastAPI"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/pho-phong-cong-nghe-mo-hinh-deputy-head-of-machine-learning-engineering-khoi-du-lieu-2026td456609-mbbank-2121033",
+      "title_raw": "Phó phòng Công nghệ Mô hình - Deputy Head of Machine Learning Engineering - Khối Dữ liệu (2026TD456609)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:56.986874+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-02T23:59:59.999999+07:00",
+        "raw_value": "2026-08-02",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2116899",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "insufficient_it_evidence",
+      "source_category_raw": "Information Technology",
+      "source_tags": [],
+      "source_url": "https://topdev.vn/viec-lam/nhan-vien-van-hanh-cong-ty-tnhh-mot-thanh-vien-seen-mien-nam-2116899",
+      "title_raw": "Nhân Viên Vận Hành"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:56:59.898267+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-07-31T23:59:59.999999+07:00",
+        "raw_value": "2026-07-31",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2116459",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "AI/Machine Learning",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "NodeJS",
+        "AI"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ai-engineer-cong-ty-tnhh-airquay-vina-2116459",
+      "title_raw": "AI Engineer"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:03.341054+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-19T23:59:59.999999+07:00",
+        "raw_value": "2026-08-19",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2121039",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "AI/Machine Learning",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "Docker"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-cao-cap-cong-nghe-mo-hinh-senior-machine-learning-engineer-khoi-du-lieu-2026td456629-mbbank-2121039",
+      "title_raw": "Chuyên viên Cao cấp Công nghệ Mô hình - Senior Machine Learning Engineer - Khối Dữ liệu (2026TD456629)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:06.130716+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-07-30T23:59:59.999999+07:00",
+        "raw_value": "2026-07-30",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115968",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "DevOps/Cloud/SRE",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "DevOps",
+        "Docker",
+        "AWS",
+        "Cloud",
+        "CI/CD",
+        "Kubernetes",
+        "Infrastructure"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/hn-devops-engineer-aetosky-pte-ltd-2115968",
+      "title_raw": "[HN] DevOps Engineer"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:09.198422+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-07-25T23:59:59.999999+07:00",
+        "raw_value": "2026-07-25",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115309",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Cloud",
+        "AI",
+        "Kubernetes",
+        "Infrastructure",
+        "Solution Architect"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ai-solution-architect-cyberlogitec-vietnam-co-ltd-2115309",
+      "title_raw": "AI Solution Architect"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:12.338231+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-07-25T23:59:59.999999+07:00",
+        "raw_value": "2026-07-25",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=1",
+      "extracted_source_job_id": "2115405",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Linux",
+        "Oracle",
+        "PostgreSql"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/dba-cong-ty-tnhh-samsung-sds-viet-nam-2115405",
+      "title_raw": "DBA"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:15.309407+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-12T23:59:59.999999+07:00",
+        "raw_value": "2026-08-12",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2120380",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Server",
+        "Cloud",
+        "Network"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-tu-van-thiet-ke-giai-phap-cntt-mobifone-it-2120380",
+      "title_raw": "Chuyên viên tư vấn thiết kế giải pháp CNTT"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:18.456093+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-21T23:59:59.999999+07:00",
+        "raw_value": "2026-08-21",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121191",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "UX/UI Design",
+        "Game Artist",
+        "UI Design"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/game-live-ops-game-ui-ux-artist-supercent-vietnam-2121191",
+      "title_raw": "[Game Live-Ops]_GAME UI/UX Artist"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:21.346272+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-12T23:59:59.999999+07:00",
+        "raw_value": "2026-08-12",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2120381",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Server",
+        "Database",
+        "Network"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/chuyen-vien-trien-khai-va-van-hanh-ha-tang-cntt-database-server-storage-network-mobifone-it-2120381",
+      "title_raw": "Chuyên viên Triển khai và Vận hành Hạ tầng CNTT (Database/Server/Storage/Network)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:24.223600+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-21T23:59:59.999999+07:00",
+        "raw_value": "2026-08-21",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121192",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Unity",
+        "C#",
+        "Game Developer"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/game-live-ops-mobile-game-developer-senior-supercent-vietnam-2121192",
+      "title_raw": "[Game Live-Ops]_Mobile Game Developer Senior"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:27.379903+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-16T23:59:59.999999+07:00",
+        "raw_value": "2026-08-16",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121007",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Backend",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Oracle",
+        "Java",
+        "MySQL",
+        "MongoDB",
+        "Redis",
+        "PostgreSql",
+        "Spring Boot"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/middle-senior-backend-engineer-java-go-khoi-cong-nghe-thong-tin-2025td923-mbbank-2121007",
+      "title_raw": "(Middle, Senior) BackEnd Engineer (Java, Go) - Khối Công nghệ thông tin (2025TD923)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:30.796111+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-21T23:59:59.999999+07:00",
+        "raw_value": "2026-08-21",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121193",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Unity",
+        "C#",
+        "Game Developer"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/playable-ads-mobile-game-developer-supercent-vietnam-2121193",
+      "title_raw": "[Playable ads]_Mobile Game Developer"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:33.744257+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-20T23:59:59.999999+07:00",
+        "raw_value": "2026-08-20",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121169",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "IT Comtor",
+        "Korean",
+        "HR"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-it-comtor-supercent-vietnam-2121169",
+      "title_raw": "Korean IT Comtor"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:36.700826+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-14T23:59:59.999999+07:00",
+        "raw_value": "2026-08-14",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2120703",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Talent Acquisition"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/talent-acquisition-staff-supercent-vietnam-2120703",
+      "title_raw": "Talent Acquisition Staff"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:39.662478+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-08T23:59:59.999999+07:00",
+        "raw_value": "2026-08-08",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2119651",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "insufficient_it_evidence",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Photoshop",
+        "Illustrator",
+        "Figma"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/brand-graphic-designer-supercent-vietnam-2119651",
+      "title_raw": "Brand Graphic Designer"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:42.843915+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-08T23:59:59.999999+07:00",
+        "raw_value": "2026-08-08",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2119723",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Game",
+        "English",
+        "Social Media"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/xp-hero-game-community-manager-fluent-in-english-supercent-vietnam-2119723",
+      "title_raw": "[XP HERO]_Game Community Manager (Fluent in English)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:45.795763+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-07T23:59:59.999999+07:00",
+        "raw_value": "2026-08-07",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2118919",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "insufficient_it_evidence",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Microsoft",
+        "Korean"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-candidates-ga-leader-supercent-vietnam-2118919",
+      "title_raw": "(Korean Candidates) GA Leader"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:48.782420+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-07T23:59:59.999999+07:00",
+        "raw_value": "2026-08-07",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2118937",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Kế toán"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-candidates-accounting-supercent-vietnam-2118937",
+      "title_raw": "(Korean Candidates) Accounting"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:51.966737+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-16T23:59:59.999999+07:00",
+        "raw_value": "2026-08-16",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121008",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "Golang",
+        "C/C++",
+        "AI",
+        "PostgreSql",
+        "Tensorflow",
+        "Computer Vision"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/ai-software-engineer-python-go-c-c-backend-ai-agents-khoi-cong-nghe-thong-tin-2026td450888-mbbank-2121008",
+      "title_raw": "AI Software Engineer (Python/Go/C/C++ Backend & AI Agents) - Khối Công nghệ thông tin (2026TD450888)"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:54.905085+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-07T23:59:59.999999+07:00",
+        "raw_value": "2026-08-07",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2118964",
+      "final_classification": "non-IT job",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": "source_tags_non_it",
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Business Coordinator",
+        "Business Development"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/korean-candidates-business-operations-associate-supercent-vietnam-2118964",
+      "title_raw": "(Korean Candidates) Business Operations Associate"
+    },
+    {
+      "closed_state": "ACTIVE",
+      "closed_state_provenance": {
+        "comparison_timestamp": "2026-07-24T20:57:58.277060+07:00",
+        "confidence": 0.98,
+        "decision_method": "inclusive_valid_through_comparison",
+        "parsed_datetime": "2026-08-16T23:59:59.999999+07:00",
+        "raw_value": "2026-08-16",
+        "source_field": "jsonld.validThrough",
+        "state": "ACTIVE"
+      },
+      "discovery_method": "topdev_it_listing_html:page=2",
+      "extracted_source_job_id": "2121009",
+      "final_classification": "valid job-detail page",
+      "normalized_primary_category": "Unclassified",
+      "rejection_reason": null,
+      "source_category_raw": "Information Technology",
+      "source_tags": [
+        "Python",
+        "Golang",
+        "C/C++",
+        "AI",
+        "PostgreSql",
+        "Tensorflow",
+        "Computer Vision"
+      ],
+      "source_url": "https://topdev.vn/viec-lam/agentic-engineer-python-go-c-c-backend-ai-agents-khoi-cong-nghe-thong-tin-2026td450887-mbbank-2121009",
+      "title_raw": "Agentic Engineer (Python/Go/C/C++ Backend & AI Agents) - Khối Công nghệ thông tin (2026TD450887)"
+    }
+  ],
+  "source": "topdev"
+}
