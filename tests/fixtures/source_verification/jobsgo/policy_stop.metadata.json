@@ -1,0 +1,9 @@
+{
+  "source": "jobsgo",
+  "source_url": "https://jobsgo.vn/site/term-of-service",
+  "fetched_at": "2026-07-24T13:58:34.0658941+07:00",
+  "http_status": 403,
+  "content_type": "unknown (403 response)",
+  "redaction_notes": "No response body or job content retained. Testing stopped after the public Terms URL and declared sitemap returned 403 to the descriptive research user agent.",
+  "evidence_type": "POLICY_AND_ACCESS_STOP_NO_JOB_DETAIL"
+}

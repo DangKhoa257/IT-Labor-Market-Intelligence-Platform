@@ -230,3 +230,120 @@ Do not change the canonical schema during Phase 1A. The audit in `DATA_SCHEMA_AU
 - source raw value retention for semantically weak structured values such as TopDev `employmentType=OTHER`.
 
 These proposals require a versioned schema decision plus synchronized updates to the gold template and tests.
+
+# Phase 1A.1 — Backup Source Verification
+
+**Verification date:** 2026-07-24 (Asia/Ho_Chi_Minh, UTC+07:00)
+**Candidates:** JobsGO and CareerViet
+**Outcome:** both sources stopped at the policy/access gate; zero job-detail pages inspected.
+
+## Objective and method
+
+Evaluate JobsGO and CareerViet as possible replacements for Glints without implementing a crawler. Direct requests used `VietnamITLaborMarketIntelligence-SourceVerification/1.1 (low-volume public-source verification; no production crawling)`, GET only, with at least two seconds between requests in each sequence.
+
+The same stop rules as Phase 1A applied. Robots permission was not treated as a Terms grant, and an HTTP 403 was treated as an access-control signal rather than something to work around.
+
+## JobsGO findings
+
+### Robots.txt
+
+- URL: `https://jobsgo.vn/robots.txt`
+- Accessed: 2026-07-24T13:57:56.1415991+07:00
+- HTTP: 200, `text/plain; charset=utf-8`
+- General user agents are allowed at `/`.
+- Disallowed paths include candidate/account, access, phone, search, WordPress and AJAX paths.
+- Declared sitemaps include:
+  - `https://jobsgo.vn/sitemap-job-place.xml`
+  - `https://jobsgo.vn/sitemap-job-type-place.xml`
+  - `https://jobsgo.vn/sitemap-job-type.xml`
+  - `https://jobsgo.vn/sitemap-job-search.xml`
+  - `https://jobsgo.vn/sitemap-employer.xml`
+  - `https://jobsgo.vn/sitemap-research-salary.xml`
+  - `https://jobsgo.vn/sitemap_index.xml`
+
+### Terms and server response
+
+- Public Terms URL: `https://jobsgo.vn/site/term-of-service`.
+- Direct access with the descriptive research User-Agent returned HTTP 403 at 2026-07-24T13:58:34.0658941+07:00.
+- The sitemap index declared in robots.txt also returned HTTP 403 at 2026-07-24T13:58:36.2697725+07:00.
+- The publicly indexed official Terms describe site data/content, including job information and data structures, as protected assets and state that exploitation, storage and sharing must comply with law, the Terms and privacy rules.
+- No attempt was made to alter headers, use a browser session, retry through another IP or evade the response.
+
+### Technical inspection
+
+Testing stopped before listing or job-detail access. Sample size is zero, so URL patterns, source IDs, rendering, structured data, pagination and job fields remain unverified.
+
+### JobsGO result
+
+**HOLD_ACCESS_CONTROL.** JobsGO is the preferred backup candidate for manual outreach because its robots.txt openly declares job-related sitemaps, but it is not safe to continue automated technical evaluation while the descriptive research client receives 403 responses.
+
+## CareerViet findings
+
+### Robots.txt
+
+- URL: `https://careerviet.vn/robots.txt`
+- Accessed: 2026-07-24T13:57:58.2367527+07:00
+- HTTP: 200, `text/plain; charset=UTF-8`
+- Several named search/AI agents are explicitly allowed, while some named archival/data agents are disallowed.
+- General user-agent rules disallow multiple candidate, matching, export, resume, API and job paths, including `/api/*`, `/vi/jobs/*`, `/en/jobs/*` and `/en/tim-viec-lam/*`.
+- No sitemap declaration was present in the inspected robots.txt.
+
+### Terms
+
+- URL: `https://careerviet.vn/vi/jobseekers/use`
+- Accessed: 2026-07-24T13:59:00.3354487+07:00
+- HTTP: 200, `text/html; charset=utf-8`
+- The public Terms authorize viewing/accessing a single copy of site content solely for personal, noncommercial use.
+- They restrict selling, modifying, reproducing, displaying or distributing site content for public/commercial purposes and state that users shall not copy or adapt the HTML code used to generate CareerViet pages.
+- These are policy observations, not legal conclusions.
+
+### Technical inspection
+
+Testing stopped at the Terms gate. No sitemap body, listing or job-detail page was requested. Sample size is zero; all technical and field claims remain unverified.
+
+### CareerViet result
+
+**EXCLUDE_FROM_AUTOMATED_MVP.** Do not continue automated evaluation unless CareerViet provides permission that covers the intended collection, retention and analytics use.
+
+## Backup comparison
+
+| Source | Detail sample | robots.txt | Sitemap | Terms/access gate | Public URL | Job ID | HTML | JSON-LD/embedded JSON | JS required | Pagination | Historical state | Result |
+|---|---:|---|---|---|---|---|---|---|---|---|---|---|
+| JobsGO | 0 | General allow with scoped disallows | Seven declarations; requested index returned 403 | Terms URL returned 403 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | `HOLD_ACCESS_CONTROL` |
+| CareerViet | 0 | Multiple job/API paths disallowed | No declaration observed | Personal/noncommercial single-copy use; HTML copying restricted | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | `EXCLUDE_FROM_AUTOMATED_MVP` |
+
+## Backup field classification
+
+Because both sources stopped before job-detail sampling, no missing field may be converted into a source default.
+
+| Field | JobsGO | CareerViet |
+|---|---|---|
+| Public detail URL | UNVERIFIED | UNVERIFIED |
+| Source job ID | UNVERIFIED | UNVERIFIED |
+| Title | UNVERIFIED | UNVERIFIED |
+| Company | UNVERIFIED | UNVERIFIED |
+| Location | UNVERIFIED | UNVERIFIED |
+| Salary | UNVERIFIED | UNVERIFIED |
+| Posted date | UNVERIFIED | UNVERIFIED |
+| Expiry date | UNVERIFIED | UNVERIFIED |
+| Experience | UNVERIFIED | UNVERIFIED |
+| Seniority | UNVERIFIED | UNVERIFIED |
+| Employment type | UNVERIFIED | UNVERIFIED |
+| Work mode | UNVERIFIED | UNVERIFIED |
+| Skill tags | UNVERIFIED | UNVERIFIED |
+| Historical/expired state | UNVERIFIED | UNVERIFIED |
+
+Rendering/transport claims are also `UNVERIFIED`: server-rendered HTML availability, JSON-LD, embedded JSON, JavaScript requirement and pagination style.
+
+## Replacement recommendation and next gate
+
+There is **no technically and operationally verified replacement for Glints** from Phase 1A.1.
+
+JobsGO is the recommended **replacement candidate for manual follow-up**, not an approved automated source. The next safe action is to ask JobsGO for permission/clarification and, if access is explicitly approved, run a new bounded verification sprint. CareerViet should not be considered for the automated MVP under the current Terms evidence.
+
+No backup source is safe for additional automated HTTP evaluation now:
+
+- JobsGO: manual compliance/permission outreach only.
+- CareerViet: permission outreach only; otherwise stop.
+
+Do not begin Phase 1B based on these backup results, and do not modify `DATA_SCHEMA.md`.

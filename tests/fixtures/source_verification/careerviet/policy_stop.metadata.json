@@ -1,0 +1,9 @@
+{
+  "source": "careerviet",
+  "source_url": "https://careerviet.vn/vi/jobseekers/use",
+  "fetched_at": "2026-07-24T13:59:00.3354487+07:00",
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "redaction_notes": "No page body or job content retained. Testing stopped at the Terms gate because permitted content use is limited and HTML copying is restricted.",
+  "evidence_type": "POLICY_STOP_NO_JOB_DETAIL"
+}

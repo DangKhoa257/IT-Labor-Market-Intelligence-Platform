@@ -9,7 +9,8 @@ from urllib.parse import urlparse
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = REPOSITORY_ROOT / "tests" / "fixtures" / "source_verification"
-EXPECTED_SOURCES = {"itviec", "topdev", "glints"}
+EXPECTED_SOURCES = {"itviec", "topdev", "glints", "jobsgo", "careerviet"}
+BACKUP_POLICY_STOP_SOURCES = {"jobsgo", "careerviet"}
 REQUIRED_METADATA_FIELDS = {
     "source",
     "source_url",
@@ -66,6 +67,12 @@ def test_every_content_fixture_has_matching_metadata() -> None:
         assert metadata_path.exists(), f"Missing metadata for {fixture_path}"
 
 
+def test_backup_sources_stopped_without_job_content_fixtures() -> None:
+    for source in BACKUP_POLICY_STOP_SOURCES:
+        source_files = {path.name for path in (FIXTURE_ROOT / source).iterdir()}
+        assert source_files == {"policy_stop.metadata.json"}
+
+
 def test_fixtures_contain_no_forbidden_secrets_or_cookies() -> None:
     for fixture_path in fixture_files():
         assert FORBIDDEN_SECRET_PATTERN.search(fixture_path.read_bytes()) is None, fixture_path
@@ -79,7 +86,11 @@ def test_content_fixtures_stay_below_safe_description_size() -> None:
 
 
 def test_verification_documents_exist() -> None:
-    for relative_path in ("docs/SOURCE_VERIFICATION.md", "docs/DATA_SCHEMA_AUDIT.md"):
+    for relative_path in (
+        "docs/SOURCE_VERIFICATION.md",
+        "docs/DATA_SCHEMA_AUDIT.md",
+        "docs/SOURCE_DECISION.md",
+    ):
         document = REPOSITORY_ROOT / relative_path
         assert document.exists()
         assert document.read_text(encoding="utf-8").strip()
