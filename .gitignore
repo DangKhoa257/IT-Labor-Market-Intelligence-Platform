@@ -65,3 +65,4 @@ datasets/**/*.htm
 !datasets/gold/*_template.csv
 !tests/fixtures/**
 .pytest-tmp/
+.deps/

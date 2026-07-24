@@ -71,3 +71,16 @@ Validation was run locally with Python 3.12.10:
 ## Offline data pipeline
 
 The source-agnostic Phase 2 pipeline enriches canonical JSONL records, validates quality, reports duplicate candidates, and creates descriptive offline analytics. See [DATA_QUALITY_PIPELINE.md](docs/DATA_QUALITY_PIPELINE.md) for the command and generated artifacts.
+
+## PostgreSQL and read-only API
+
+```powershell
+docker compose up -d postgres
+alembic upgrade head
+python -m it_labor_market_intelligence.cli.import_dataset --input datasets/processed/topdev_analysis_ready.jsonl --source topdev
+uvicorn apps.api.main:app --reload
+```
+
+Open Swagger at `http://127.0.0.1:8000/docs`. Use `alembic downgrade -1` to reverse the Phase 3 migration and `docker compose down` to stop PostgreSQL.
+
+Run checks with `python -m pytest`, `python -m ruff check .`, and `python -m ruff format --check .`. See [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md), [API_REFERENCE.md](docs/API_REFERENCE.md), and [DATA_IMPORT_RUNBOOK.md](docs/DATA_IMPORT_RUNBOOK.md).
