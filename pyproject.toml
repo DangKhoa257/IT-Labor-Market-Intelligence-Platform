@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "it-labor-market-intelligence"
+version = "0.1.0"
+description = "Foundation for the Vietnam IT Labor Market Intelligence Platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Project Contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.4,<26",
+  "mypy>=1.10,<2",
+  "pytest>=8.2,<9",
+  "pytest-cov>=5,<7",
+  "ruff>=0.5,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/it_labor_market_intelligence"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.black]
+target-version = ["py312"]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = ['^\.venv/']
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers -p no:cacheprovider"
+
+[tool.coverage.run]
+branch = true
+source = ["analytics", "crawler", "data_processing"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 0
+

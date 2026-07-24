@@ -1,1 +1,5 @@
+name: it-labor-market-intelligence
 
+# Phase 0 intentionally defines no runtime services. Services will be added only
+# when the storage and application architecture is approved for implementation.
+services: {}

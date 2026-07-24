@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.uv-cache/
+.uv-python/
+.test-deps/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node.js and frontend builds
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+dist/
+build/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and caches
+*.log
+logs/
+.cache/
+
+# Docker local overrides
+docker-compose.override.yml
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
+
+# Collected datasets and raw evidence (small committed fixtures/templates are allowed)
+datasets/raw/**
+datasets/processed/**
+datasets/**/*.parquet
+datasets/**/*.jsonl
+datasets/**/*.html
+datasets/**/*.htm
+!datasets/raw/.gitkeep
+!datasets/processed/.gitkeep
+!datasets/gold/*_template.csv
+!tests/fixtures/**

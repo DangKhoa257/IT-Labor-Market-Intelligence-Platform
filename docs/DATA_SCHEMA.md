@@ -1,1 +1,103 @@
+# Canonical Data Schema
 
+**Phiên bản:** 0.1 draft (Phase 0). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV.
+
+## Phân loại provenance
+
+- **Direct:** lấy trực tiếp từ nội dung/metadata nguồn và giữ nguyên tối đa.
+- **Normalized:** biến đổi deterministic từ direct value theo rule/taxonomy được version hóa.
+- **Inferred:** không được nguồn nói trực tiếp; chỉ điền khi cột cho phép và rule có thể tái lập.
+- **System:** sinh bởi hệ thống thu thập/xử lý, không lấy từ nội dung tuyển dụng.
+
+`null` luôn có nghĩa là không có đủ bằng chứng/không áp dụng; không thay bằng `0`, `unknown`, chuỗi rỗng hoặc dự đoán. Với array optional, dùng null khi không có vùng dữ liệu để đọc và `[]` khi vùng dữ liệu tồn tại nhưng không tìm thấy giá trị hợp lệ.
+
+## JobPosting canonical fields
+
+| Field | Type | Req. | Class | Ý nghĩa | Nguồn | Chuẩn hóa | Null | Suy luận? |
+|---|---|---:|---|---|---|---|---|---|
+| `source` | string | R | System | Mã nguồn ổn định | Source registry/crawl run | lowercase slug | Không | Không |
+| `source_job_id` | string | R | Direct | ID tin trong nguồn | URL/API/markup nguồn | trim; giữ leading zero | Không; nếu nguồn không cấp thì policy ID phải được duyệt | Không |
+| `source_url` | string (URI) | R | Direct | URL bằng chứng chính | Discovery/fetch | absolute URL; bỏ fragment; query chỉ bỏ theo policy | Không | Không |
+| `title_raw` | string | R | Direct | Chức danh nguyên văn | Nội dung nguồn | trim whitespace, không dịch | Không | Không |
+| `title_normalized` | string | O | Normalized | Chức danh đã chuẩn hóa | `title_raw` | alias/rule được version hóa | Null nếu không đủ chắc chắn | Có, rule-based |
+| `job_category` | enum string | O | Inferred | Nhóm nghề canonical | Title + description | Giá trị trong `JOB_TAXONOMY.md` | `Other/Unclassified` chỉ khi đã review/rule; null nếu chưa xử lý | Có |
+| `company_name` | string | O | Direct | Tên công ty hiển thị | Nội dung nguồn | trim; normalized company identity ở entity `Company` | Null nếu ẩn/thiếu | Không trong field này |
+| `company_industry` | string | O | Direct | Ngành công ty do nguồn nêu | Nội dung/metadata nguồn | trim; mapping taxonomy để phase sau | Null nếu thiếu | Không |
+| `company_size` | string | O | Direct | Khoảng quy mô nhân sự | Nội dung/metadata nguồn | định dạng range chuẩn khi nguồn nêu rõ | Null nếu thiếu | Không |
+| `location_raw` | string | O | Direct | Địa điểm nguyên văn | Nội dung nguồn | trim only | Null nếu remote/thiếu và không có text | Không |
+| `city` | string | O | Normalized | Tỉnh/thành canonical | `location_raw` | tên hành chính canonical; array chưa hỗ trợ ở v0.1 | Null nếu remote-only, đa địa điểm hoặc mơ hồ | Có, rule-based |
+| `work_mode` | enum: onsite, hybrid, remote | O | Inferred | Hình thức làm việc | Title/location/description | map alias Việt/Anh | Null nếu không nói rõ | Có |
+| `employment_type` | enum: full_time, part_time, contract, internship, temporary, other | O | Normalized | Loại hợp đồng/công việc | Nội dung nguồn | map alias sang enum | Null nếu thiếu | Có, rule-based |
+| `seniority` | enum: intern, fresher, junior, mid, senior, lead, manager, director, executive | O | Inferred | Cấp bậc vai trò | Title + yêu cầu kinh nghiệm/trách nhiệm | rule theo guideline/taxonomy version | Null nếu mơ hồ | Có |
+| `experience_min_years` | number | O | Normalized | Số năm kinh nghiệm tối thiểu | Requirement text | tháng / 12; `0` chỉ khi nêu không yêu cầu | Null nếu không nêu | Có, chỉ parsing |
+| `experience_max_years` | number | O | Normalized | Số năm kinh nghiệm tối đa | Requirement text | tháng / 12; phải >= min | Null nếu range mở/không nêu | Có, chỉ parsing |
+| `salary_raw` | string | O | Direct | Lương nguyên văn | Nội dung nguồn | trim only | Null nếu không có vùng lương | Không |
+| `salary_min` | number | O | Normalized | Cận dưới lương | `salary_raw` | numeric base unit; chưa quy đổi FX | Null nếu thỏa thuận/range mở/parse thất bại | Có, chỉ parsing |
+| `salary_max` | number | O | Normalized | Cận trên lương | `salary_raw` | numeric base unit; >= min | Null nếu thỏa thuận/range mở/parse thất bại | Có, chỉ parsing |
+| `salary_currency` | string (ISO 4217) | O | Normalized | Đồng tiền được nêu | `salary_raw` | VND/USD/... theo ISO 4217 | Null nếu không xác định; không mặc định VND | Có, chỉ parsing |
+| `salary_period` | enum: hour, day, month, year | O | Normalized | Kỳ trả lương | `salary_raw` | map unit sang enum | Null nếu không nêu; không mặc định month | Có, chỉ parsing |
+| `salary_type` | enum: gross, net, negotiable, range, fixed, from, up_to, other | O | Normalized | Cách biểu diễn lương | `salary_raw` | deterministic parsing | Null nếu không xác định | Có, chỉ parsing |
+| `salary_disclosed` | boolean | R | Normalized | Có giá trị/range lương công khai | Salary region/raw text | true chỉ khi có số tiền; “thỏa thuận” = false | Không | Có, deterministic |
+| `skills_raw` | array<string> | O | Direct | Cụm kỹ năng nguyên văn | Skill section/description | giữ text, trim, dedupe exact | Null hoặc `[]` theo quy tắc array | Không |
+| `skills_normalized` | array<string> | O | Normalized | Tên skill canonical | `skills_raw`/description | alias map; stable order; unique | Null nếu chưa xử lý; `[]` nếu đã xử lý không có skill | Có, rule-based |
+| `education_level` | string | O | Normalized | Trình độ học vấn tối thiểu | Requirement text | map seed enum khi taxonomy được duyệt | Null nếu thiếu/mơ hồ | Có, rule-based |
+| `language_requirements` | array<string> | O | Normalized | Ngôn ngữ con người được yêu cầu | Requirement text | canonical language + level nếu nêu | Null/`[]` theo quy tắc array | Có, rule-based |
+| `description_raw` | string | R | Direct | Mô tả tin nguyên văn/đã trích text | Nội dung nguồn | normalize line ending; không tóm tắt | Không | Không |
+| `posted_at` | datetime | O | Direct | Thời điểm nguồn công bố | Nội dung/metadata nguồn | ISO 8601 timezone; ghi precision nếu model mở rộng | Null nếu thiếu/relative date không resolve được | Không |
+| `expires_at` | datetime | O | Direct | Thời điểm hết hạn do nguồn nêu | Nội dung/metadata nguồn | ISO 8601 timezone | Null nếu thiếu | Không |
+| `first_seen_at` | datetime | R | System | Lần đầu hệ thống quan sát identity | Successful crawl | ISO 8601 UTC | Không | Không |
+| `last_seen_at` | datetime | R | System | Lần gần nhất quan sát thành công | Successful crawl | ISO 8601 UTC; >= first_seen | Không | Không |
+| `collected_at` | datetime | R | System | Thời điểm thu evidence/snapshot này | Fetch clock | ISO 8601 UTC | Không | Không |
+| `is_active` | boolean | R | System | Trạng thái theo lifecycle policy | Observation history | false chỉ theo expiry/removal policy; fetch lỗi không đủ | Không | Có, từ quan sát hệ thống |
+| `content_hash` | string | R | System | Hash nội dung canonical để nhận biết đổi | Raw/normalized evidence bytes | lowercase SHA-256 hex; contract bytes phải version hóa | Không | Không |
+| `extractor_version` | string | R | System | Phiên bản extractor tạo record | Build/runtime metadata | semantic version hoặc immutable build ID | Không | Không |
+| `confidence_score` | number [0,1] | R | System | Confidence tổng hợp của normalized/inferred fields | Validation/extraction rules | clamp [0,1]; công thức version hóa | Không | Có, từ rule metrics |
+
+`R` = required, `O` = optional. Từ “suy luận” ở bảng bao gồm parsing/rule deterministic; LLM không thuộc Phase 0.
+
+## Constraints xuyên trường
+
+- Identity trong một nguồn là unique `(source, source_job_id)`; URL có thể đổi.
+- `first_seen_at <= collected_at` và `first_seen_at <= last_seen_at`.
+- Nếu cả hai có giá trị: `experience_min_years <= experience_max_years`, `salary_min <= salary_max`.
+- `salary_disclosed=false` khi lương thiếu hoặc chỉ “thỏa thuận”; khi true phải có ít nhất một cận số, currency và period nếu nguồn cung cấp.
+- `skills_normalized` chỉ chứa canonical names trong skill registry; alias không được ghi vào danh sách này.
+- Mọi snapshot phải liên kết raw evidence, crawl run và canonical posting trong storage model dù các khóa liên kết chưa nằm trong exchange schema v0.1.
+
+## Entity model
+
+### JobPosting
+
+Identity logic lâu dài của một tin tại một nguồn. Khóa đề xuất: internal UUID; unique `(source_id, source_job_id)`. Giữ current canonical state, first/last seen và active; có nhiều `JobSnapshot`. Cross-source duplicates không bị hợp nhất vật lý ở Phase 0.
+
+### JobSnapshot
+
+Quan sát bất biến của `JobPosting` tại `collected_at`: raw evidence reference, HTTP/fetch metadata, content hash, extractor version và payload canonical tại thời điểm đó. Unique đề xuất `(job_posting_id, collected_at, content_hash)`.
+
+### Company
+
+Identity công ty chuẩn hóa độc lập với tên hiển thị. Gồm internal ID, canonical name, aliases và metadata đã xác minh. Việc entity resolution phải giữ confidence/provenance; không tự gộp chỉ theo tên gần giống.
+
+### Skill
+
+Registry gồm internal ID, canonical name, category, aliases, false-positive notes và taxonomy version. Canonical name phải unique trong phạm vi taxonomy version.
+
+### JobSkill
+
+Quan hệ many-to-many giữa `JobPosting`/snapshot và `Skill`, giữ raw mention, evidence span/source section, required/preferred nếu có, confidence và extraction rule version.
+
+### Source
+
+Registry của nguồn: stable slug, base URL, approval status, robots/ToS review references, owner, rate policy và timestamps. Chỉ nguồn approved mới được scheduler kích hoạt.
+
+### CrawlRun
+
+Một lần chạy có source, started/finished time, configuration/version, status và counters discovery/fetch/success/error. Dùng để audit và tính benchmark crawl.
+
+### CrawlError
+
+Lỗi có cấu trúc liên kết `CrawlRun`, URL/job ID nếu biết, stage, error category, retryable flag, sanitized message và timestamp. Không lưu secret hoặc response nhạy cảm trong error text.
+
+## Chưa quyết định
+
+Database engine, physical column types/indexes, snapshot payload format, cross-source cluster entity, multi-location representation và migrations được hoãn đến V1. Không tạo migration từ tài liệu Phase 0 này.
