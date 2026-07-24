@@ -50,8 +50,11 @@ class _JsonLdParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {name.casefold(): value for name, value in attrs}
-        if tag.casefold() == "script" and attributes.get("type", "").casefold() == (
-            "application/ld+json"
+        script_type = attributes.get("type")
+        if (
+            tag.casefold() == "script"
+            and script_type is not None
+            and script_type.casefold() == ("application/ld+json")
         ):
             self._capturing = True
             self._parts = []
@@ -185,7 +188,7 @@ def extract_job_id(url: str) -> str:
     matches = _JOB_ID.findall(urlparse(url).path + "/")
     if not matches:
         raise ValueError(f"TopDev URL has no numeric job ID: {url}")
-    return matches[-1]
+    return str(matches[-1])
 
 
 def _is_topdev_job_url(url: str) -> bool:
@@ -274,6 +277,7 @@ def _salary(value: Any) -> str | None:
     if not isinstance(value, dict):
         return _text(value)
     salary_value = value.get("value")
+    rendered: str | None
     if isinstance(salary_value, dict):
         minimum = _text(salary_value.get("minValue"))
         maximum = _text(salary_value.get("maxValue"))

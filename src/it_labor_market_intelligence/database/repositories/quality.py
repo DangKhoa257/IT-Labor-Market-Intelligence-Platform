@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -8,7 +10,7 @@ class QualityRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def summary(self) -> dict:
+    def summary(self) -> dict[str, Any]:
         rows = self.session.execute(
             select(DataQualityIssue.code, func.count())
             .group_by(DataQualityIssue.code)

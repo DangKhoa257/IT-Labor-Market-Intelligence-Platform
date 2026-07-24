@@ -44,7 +44,8 @@ def normalize_location(value: str | None, reference_path: Path | None = None) ->
         }
     matches: list[str] = []
     for city, aliases in _cities(reference_path).items():
-        if any(comparison_key(alias) in key for alias in aliases):
+        alias_keys = (comparison_key(alias) for alias in aliases)
+        if any(alias_key is not None and alias_key in key for alias_key in alias_keys):
             matches.append(city)
     district_match = _DISTRICT.search(value or "")
     district = None

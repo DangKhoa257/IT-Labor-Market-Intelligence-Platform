@@ -1,8 +1,10 @@
 from collections import defaultdict
 from statistics import mean, median
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 
 from ..models import Company, JobPosting, Skill, Source
 
@@ -11,7 +13,7 @@ class AnalyticsRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def overview(self) -> dict:
+    def overview(self) -> dict[str, Any]:
         total = self.session.scalar(select(func.count(JobPosting.id))) or 0
         active = (
             self.session.scalar(
@@ -40,7 +42,7 @@ class AnalyticsRepository:
             "source_coverage": [{"source": name, "count": count} for name, count in sources],
         }
 
-    def grouped(self, column) -> list[dict]:
+    def grouped(self, column: InstrumentedAttribute[str | None]) -> list[dict[str, Any]]:
         rows = self.session.execute(
             select(column, func.count(JobPosting.id))
             .group_by(column)
@@ -48,7 +50,7 @@ class AnalyticsRepository:
         )
         return [{"value": value, "count": count} for value, count in rows]
 
-    def salaries(self) -> dict[str, list[dict]]:
+    def salaries(self) -> dict[str, list[dict[str, Any]]]:
         rows = self.session.execute(
             select(
                 JobPosting.salary_currency,

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from .fingerprints import canonical_url, content_hash, identity_key
 
 
-def exact_clusters(records: list[dict]) -> list[list[int]]:
+def exact_clusters(records: list[dict[str, Any]]) -> list[list[int]]:
     groups: dict[tuple[str, str], list[int]] = defaultdict(list)
     for index, record in enumerate(records):
         for kind, value in (

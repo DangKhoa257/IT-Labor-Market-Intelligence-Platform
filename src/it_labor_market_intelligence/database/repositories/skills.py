@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -8,7 +10,7 @@ class SkillRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def list(self) -> list[dict]:
+    def list(self) -> list[dict[str, Any]]:
         rows = self.session.execute(
             select(Skill.id, Skill.canonical_name, Skill.category, func.count(JobSkill.job_id))
             .outerjoin(JobSkill)

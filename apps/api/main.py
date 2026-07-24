@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -27,7 +27,7 @@ from .settings import APISettings
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-def _meta(session: Session) -> dict:
+def _meta(session: Session) -> dict[str, Any]:
     overview = AnalyticsRepository(session).overview()
     return {
         "sample_size": overview["total_jobs"],
@@ -51,7 +51,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app = FastAPI(title="IT Labor Market Analytics API", version="1.0.0")
 
     @app.get("/health")
-    def health() -> dict:
+    def health() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.get(f"{settings.api_prefix}/jobs", response_model=Page)
@@ -112,26 +112,26 @@ def create_app(database_url: str | None = None) -> FastAPI:
         )
 
     @app.get(f"{settings.api_prefix}/companies")
-    def companies(session: SessionDep) -> list[dict]:
+    def companies(session: SessionDep) -> list[dict[str, Any]]:
         return CompanyRepository(session).list()
 
     @app.get(f"{settings.api_prefix}/companies/{{company_id}}")
-    def company(company_id: int, session: SessionDep) -> dict:
+    def company(company_id: int, session: SessionDep) -> dict[str, Any]:
         result = CompanyRepository(session).get(company_id)
         if result is None:
             raise HTTPException(404, "Company not found")
         return result
 
     @app.get(f"{settings.api_prefix}/skills")
-    def skills(session: SessionDep) -> list[dict]:
+    def skills(session: SessionDep) -> list[dict[str, Any]]:
         return SkillRepository(session).list()
 
     @app.get(f"{settings.api_prefix}/analytics/overview")
-    def overview(session: SessionDep) -> dict:
+    def overview(session: SessionDep) -> dict[str, Any]:
         return _meta(session) | {"data": AnalyticsRepository(session).overview()}
 
     @app.get(f"{settings.api_prefix}/analytics/categories")
-    def categories(session: SessionDep) -> dict:
+    def categories(session: SessionDep) -> dict[str, Any]:
         metadata = _meta(session)
         rows = AnalyticsRepository(session).grouped(JobPosting.primary_category)
         total = metadata["sample_size"]
@@ -140,15 +140,15 @@ def create_app(database_url: str | None = None) -> FastAPI:
         return metadata | {"data": rows}
 
     @app.get(f"{settings.api_prefix}/analytics/skills")
-    def analytics_skills(session: SessionDep) -> dict:
+    def analytics_skills(session: SessionDep) -> dict[str, Any]:
         return _meta(session) | {"data": SkillRepository(session).list()}
 
     @app.get(f"{settings.api_prefix}/analytics/salaries")
-    def salaries(session: SessionDep) -> dict:
+    def salaries(session: SessionDep) -> dict[str, Any]:
         return _meta(session) | {"data": AnalyticsRepository(session).salaries()}
 
     @app.get(f"{settings.api_prefix}/analytics/locations")
-    def locations(session: SessionDep) -> dict:
+    def locations(session: SessionDep) -> dict[str, Any]:
         return _meta(session) | {
             "cities": AnalyticsRepository(session).grouped(JobPosting.city),
             "provinces": AnalyticsRepository(session).grouped(JobPosting.province),
@@ -156,11 +156,11 @@ def create_app(database_url: str | None = None) -> FastAPI:
         }
 
     @app.get(f"{settings.api_prefix}/quality/summary")
-    def quality(session: SessionDep) -> dict:
+    def quality(session: SessionDep) -> dict[str, Any]:
         return QualityRepository(session).summary()
 
     @app.get(f"{settings.api_prefix}/duplicates")
-    def duplicates(session: SessionDep) -> list[dict]:
+    def duplicates(session: SessionDep) -> list[dict[str, Any]]:
         return DuplicateRepository(session).list()
 
     return app

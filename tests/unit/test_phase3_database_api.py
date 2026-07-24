@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +20,9 @@ from it_labor_market_intelligence.database.repositories import JobRepository
 from it_labor_market_intelligence.database.services import DatasetImporter
 
 
-def _payload(identifier: str, *, company: str = "Example Tech", currency: str = "USD") -> dict:
+def _payload(
+    identifier: str, *, company: str = "Example Tech", currency: str = "USD"
+) -> dict[str, Any]:
     return {
         "raw": {
             "source": "synthetic",
@@ -66,7 +70,7 @@ def _payload(identifier: str, *, company: str = "Example Tech", currency: str = 
 
 
 @pytest.fixture
-def database(tmp_path: Path) -> tuple[str, Session]:
+def database(tmp_path: Path) -> Generator[tuple[str, Session], None, None]:
     url = f"sqlite:///{tmp_path / 'phase3.db'}"
     engine = create_engine(url)
     Base.metadata.create_all(engine)

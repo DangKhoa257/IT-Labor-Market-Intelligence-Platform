@@ -15,7 +15,10 @@ def _counter(counter: Counter[str]) -> list[dict[str, Any]]:
     ]
 
 
-def _salary_summary(records: list[dict]) -> dict[str, Any]:
+JobRecord = dict[str, Any]
+
+
+def _salary_summary(records: list[JobRecord]) -> dict[str, Any]:
     groups: dict[str, list[Decimal]] = {}
     for record in records:
         salary = record.get("normalized", {}).get("salary", {})
@@ -45,7 +48,7 @@ def _salary_summary(records: list[dict]) -> dict[str, Any]:
     return results
 
 
-def analyze_records(records: list[dict], generated_at: str) -> dict[str, Any]:
+def analyze_records(records: list[JobRecord], generated_at: str) -> dict[str, Any]:
     companies: Counter[str] = Counter()
     categories: Counter[str] = Counter()
     cities: Counter[str] = Counter()
@@ -78,9 +81,11 @@ def analyze_records(records: list[dict], generated_at: str) -> dict[str, Any]:
         salary = normalized.get("salary", {})
         disclosed += bool(salary.get("disclosed"))
         names = sorted(
-            match.get("canonical_name")
+            name
             for match in normalized.get("skills", [])
-            if isinstance(match, dict) and match.get("canonical_name")
+            if isinstance(match, dict)
+            and isinstance((name := match.get("canonical_name")), str)
+            and name
         )
         skills.update(names)
         for left, right in zip(names, names[1:], strict=False):

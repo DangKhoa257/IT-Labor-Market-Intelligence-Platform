@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 
 
 def _raw(record: dict[str, Any]) -> dict[str, Any]:
-    return record.get("raw", {})
+    value = record.get("raw", {})
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
 def _normalized(record: dict[str, Any]) -> dict[str, Any]:
-    return record.get("normalized", {})
+    value = record.get("normalized", {})
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
 def _rate(count: int, total: int) -> float:

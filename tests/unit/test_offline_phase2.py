@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -24,8 +25,8 @@ from it_labor_market_intelligence.processing.work_modes import normalize_work_mo
 from it_labor_market_intelligence.quality import validate_record
 
 
-def _record(identifier: str, **raw_changes: object) -> dict:
-    raw = {
+def _record(identifier: str, **raw_changes: object) -> dict[str, Any]:
+    raw: dict[str, object] = {
         "source": "synthetic",
         "source_job_id": identifier,
         "source_url": f"https://example.test/jobs/{identifier}",

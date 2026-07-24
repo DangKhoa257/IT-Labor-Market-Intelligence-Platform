@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -8,7 +10,7 @@ class CompanyRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def list(self) -> list[dict]:
+    def list(self) -> list[dict[str, Any]]:
         rows = self.session.execute(
             select(
                 Company.id,
@@ -25,7 +27,7 @@ class CompanyRepository:
             for row in rows
         ]
 
-    def get(self, company_id: int) -> dict | None:
+    def get(self, company_id: int) -> dict[str, Any] | None:
         result = next((item for item in self.list() if item["id"] == company_id), None)
         if result is None:
             return None

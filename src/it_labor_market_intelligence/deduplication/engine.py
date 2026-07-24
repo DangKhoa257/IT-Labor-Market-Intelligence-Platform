@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from .exact import exact_clusters
 from .similarity import compare_records
 
 
-def deduplicate_records(records: list[dict]) -> dict:
-    clusters: list[dict] = []
+def deduplicate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
+    clusters: list[dict[str, Any]] = []
     seen: set[tuple[int, ...]] = set()
     for indices in exact_clusters(records):
         key = tuple(indices)
@@ -42,7 +44,7 @@ def deduplicate_records(records: list[dict]) -> dict:
     return {"method_version": "dedup.v1", "cluster_count": len(clusters), "clusters": clusters}
 
 
-def _member_identity(record: dict) -> dict:
+def _member_identity(record: dict[str, Any]) -> dict[str, Any]:
     raw = record.get("raw", {})
     return {
         "source": raw.get("source"),

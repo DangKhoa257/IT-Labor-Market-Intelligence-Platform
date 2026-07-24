@@ -43,7 +43,7 @@ def normalize_company(value: str | None, alias_path: Path | None = None) -> dict
 
     display = normalize_display(value)
     key = comparison_key(display)
-    if display is None or key in _HIDDEN:
+    if display is None or key is None or key in _HIDDEN:
         return {
             "company_name_raw": value,
             "company_name_normalized": None,

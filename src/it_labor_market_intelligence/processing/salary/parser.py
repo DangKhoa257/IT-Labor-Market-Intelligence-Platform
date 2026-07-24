@@ -25,11 +25,13 @@ _NEGOTIABLE = re.compile(
 
 
 def _normalize(text: str) -> str:
-    return (
-        unicodedata.normalize("NFKC", text)
-        .casefold()
-        .translate(str.maketrans({"–": "-", "—": "-", "−": "-", "₫": " vnd "}))
-    )
+    translation: dict[str | int, str | int | None] = {
+        "–": "-",
+        "—": "-",
+        "−": "-",
+        "₫": " vnd ",
+    }
+    return unicodedata.normalize("NFKC", text).casefold().translate(str.maketrans(translation))
 
 
 def _decimal(token: str) -> Decimal | None:

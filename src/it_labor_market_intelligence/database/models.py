@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -88,7 +89,7 @@ class JobPosting(Base):
     normalization_version: Mapped[str | None] = mapped_column(String(100))
     confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     description_raw: Mapped[str | None] = mapped_column(Text)
-    provenance: Mapped[dict] = mapped_column(JSON, default=dict)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
@@ -105,7 +106,7 @@ class JobSnapshot(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("job_postings.id"), nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String(128))
-    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
