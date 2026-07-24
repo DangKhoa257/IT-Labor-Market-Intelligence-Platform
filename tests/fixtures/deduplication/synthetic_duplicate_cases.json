@@ -1,0 +1,18 @@
+{
+  "data_classification": "SYNTHETIC_TEST_DATA",
+  "purpose": "Offline duplicate-regression examples only; not labor-market observations.",
+  "cases": [
+    {
+      "name": "same_identity_changed_url",
+      "expected_classification": "EXACT_DUPLICATE"
+    },
+    {
+      "name": "same_title_different_company",
+      "expected_classification": "DISTINCT"
+    },
+    {
+      "name": "minor_title_punctuation",
+      "expected_classification": "PROBABLE_DUPLICATE"
+    }
+  ]
+}

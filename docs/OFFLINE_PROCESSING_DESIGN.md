@@ -138,3 +138,10 @@ serializes the returned contract in a later approved phase, and retains the raw 
 by provenance keys. Adapter tests should use sanitized offline fixtures and cover missing/malformed
 source fields. Adding an adapter does not authorize fetching, and this pipeline never initiates a
 request itself.
+# Offline Processing Design
+
+## Phase 2 extension
+
+The canonical processing result is now a stable input contract for the offline quality pipeline. Phase 2 adds `enrichment` alongside existing `raw` and `normalized` values, preserving original parser output and its provenance. Enrichment has independent provenance for company, location, employment type, and work mode. Validation and deduplication are report-oriented and do not mutate raw source evidence.
+
+See [DATA_QUALITY_PIPELINE.md](DATA_QUALITY_PIPELINE.md), [DEDUPLICATION_ENGINE.md](DEDUPLICATION_ENGINE.md), and [OFFLINE_ANALYTICS.md](OFFLINE_ANALYTICS.md).

@@ -1,0 +1,108 @@
+{
+  "cluster_count": 3,
+  "clusters": [
+    {
+      "classification": "POSSIBLE_DUPLICATE",
+      "decision": {
+        "classification": "POSSIBLE_DUPLICATE",
+        "confidence": 0.6315,
+        "conflicting_features": [],
+        "matched_features": [
+          "company",
+          "city",
+          "employment_type",
+          "title_tokens",
+          "skills"
+        ],
+        "method_version": "dedup.v1",
+        "score": 0.6315
+      },
+      "member_indices": [
+        4,
+        6
+      ],
+      "members": [
+        {
+          "source": "topdev",
+          "source_job_id": "2121033",
+          "source_url": "https://topdev.vn/viec-lam/pho-phong-cong-nghe-mo-hinh-deputy-head-of-machine-learning-engineering-khoi-du-lieu-2026td456609-mbbank-2121033"
+        },
+        {
+          "source": "topdev",
+          "source_job_id": "2121039",
+          "source_url": "https://topdev.vn/viec-lam/chuyen-vien-cao-cap-cong-nghe-mo-hinh-senior-machine-learning-engineer-khoi-du-lieu-2026td456629-mbbank-2121039"
+        }
+      ],
+      "representative_index": 4
+    },
+    {
+      "classification": "POSSIBLE_DUPLICATE",
+      "decision": {
+        "classification": "POSSIBLE_DUPLICATE",
+        "confidence": 0.7,
+        "conflicting_features": [],
+        "matched_features": [
+          "company",
+          "city",
+          "employment_type",
+          "title_tokens",
+          "skills"
+        ],
+        "method_version": "dedup.v1",
+        "score": 0.7
+      },
+      "member_indices": [
+        13,
+        15
+      ],
+      "members": [
+        {
+          "source": "topdev",
+          "source_job_id": "2121192",
+          "source_url": "https://topdev.vn/viec-lam/game-live-ops-mobile-game-developer-senior-supercent-vietnam-2121192"
+        },
+        {
+          "source": "topdev",
+          "source_job_id": "2121193",
+          "source_url": "https://topdev.vn/viec-lam/playable-ads-mobile-game-developer-supercent-vietnam-2121193"
+        }
+      ],
+      "representative_index": 13
+    },
+    {
+      "classification": "PROBABLE_DUPLICATE",
+      "decision": {
+        "classification": "PROBABLE_DUPLICATE",
+        "confidence": 0.85,
+        "conflicting_features": [],
+        "matched_features": [
+          "company",
+          "city",
+          "employment_type",
+          "title_tokens",
+          "skills"
+        ],
+        "method_version": "dedup.v1",
+        "score": 0.85
+      },
+      "member_indices": [
+        17,
+        18
+      ],
+      "members": [
+        {
+          "source": "topdev",
+          "source_job_id": "2121008",
+          "source_url": "https://topdev.vn/viec-lam/ai-software-engineer-python-go-c-c-backend-ai-agents-khoi-cong-nghe-thong-tin-2026td450888-mbbank-2121008"
+        },
+        {
+          "source": "topdev",
+          "source_job_id": "2121009",
+          "source_url": "https://topdev.vn/viec-lam/agentic-engineer-python-go-c-c-backend-ai-agents-khoi-cong-nghe-thong-tin-2026td450887-mbbank-2121009"
+        }
+      ],
+      "representative_index": 17
+    }
+  ],
+  "method_version": "dedup.v1"
+}

@@ -44,7 +44,7 @@ exclude = ['^\.venv/']
 minversion = "8.0"
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra --strict-markers -p no:cacheprovider"
+addopts = "-ra --strict-markers -p no:cacheprovider --basetemp=.pytest-tmp"
 
 [tool.coverage.run]
 branch = true

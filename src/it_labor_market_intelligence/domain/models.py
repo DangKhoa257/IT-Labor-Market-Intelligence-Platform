@@ -12,7 +12,7 @@ from typing import Literal
 Currency = Literal["VND", "USD"]
 SalaryPeriod = Literal["hour", "month", "year"]
 SalaryType = Literal["gross", "net", "negotiable"]
-IssueSeverity = Literal["error", "warning"]
+IssueSeverity = Literal["INFO", "WARNING", "ERROR", "REJECT", "error", "warning"]
 
 
 def _validate_confidence(confidence: float) -> None:
@@ -122,6 +122,11 @@ class ValidationIssue:
     code: str
     message: str
     severity: IssueSeverity
+    observed_value: object | None = None
+    expected_rule: str | None = None
+    record_identifier: str | None = None
+    source: str | None = None
+    provenance_reference: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

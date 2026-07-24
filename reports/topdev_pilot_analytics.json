@@ -1,0 +1,264 @@
+{
+  "category": [
+    {
+      "count": 13,
+      "value": "Unclassified"
+    },
+    {
+      "count": 2,
+      "value": "AI/Machine Learning"
+    },
+    {
+      "count": 2,
+      "value": "Backend"
+    },
+    {
+      "count": 1,
+      "value": "DevOps/Cloud/SRE"
+    },
+    {
+      "count": 1,
+      "value": "UI/UX"
+    }
+  ],
+  "closed_states": [
+    {
+      "count": 19,
+      "value": "ACTIVE"
+    }
+  ],
+  "companies": [
+    {
+      "count": 6,
+      "value": "MBBANK"
+    },
+    {
+      "count": 4,
+      "value": "SUPERCENT VIETNAM"
+    },
+    {
+      "count": 3,
+      "value": "MobiFone IT"
+    },
+    {
+      "count": 1,
+      "value": "AETOSKY PTE. LTD"
+    },
+    {
+      "count": 1,
+      "value": "Clearstone Software"
+    },
+    {
+      "count": 1,
+      "value": "CyberLogitec Vietnam Co., Ltd."
+    },
+    {
+      "count": 1,
+      "value": "CÔNG TY TNHH AIRQUAY VINA"
+    },
+    {
+      "count": 1,
+      "value": "CÔNG TY TNHH SAMSUNG SDS VIỆT NAM"
+    },
+    {
+      "count": 1,
+      "value": "DaouKiwoom Innovation"
+    }
+  ],
+  "generated_at": "2026-07-24T14:24:09.573703+00:00",
+  "limitations": [
+    "Descriptive output is limited to this offline input sample.",
+    "Salary statistics are separated by currency; no exchange rate is applied."
+  ],
+  "locations": {
+    "cities": [
+      {
+        "count": 12,
+        "value": "Hanoi"
+      },
+      {
+        "count": 7,
+        "value": "Ho Chi Minh City"
+      }
+    ],
+    "work_modes": [
+      {
+        "count": 14,
+        "value": "UNSPECIFIED"
+      },
+      {
+        "count": 4,
+        "value": "ONSITE"
+      },
+      {
+        "count": 1,
+        "value": "HYBRID"
+      }
+    ]
+  },
+  "market_overview": {
+    "active_job_count": 19,
+    "disclosed_salary_rate": 0.1053,
+    "total_accepted_jobs": 19,
+    "unique_companies": 9
+  },
+  "salary": {
+    "USD": {
+      "max": "3600",
+      "mean": "3600.00",
+      "median": "3600",
+      "min": "3600",
+      "numeric_sample_count": 1,
+      "quartiles": []
+    },
+    "VND": {
+      "max": "30000000",
+      "mean": "30000000.00",
+      "median": "30000000",
+      "min": "30000000",
+      "numeric_sample_count": 1,
+      "quartiles": []
+    }
+  },
+  "sample_size": 19,
+  "skills": {
+    "co_occurrence_pairs": [
+      {
+        "count": 2,
+        "value": "Go | PostgreSQL"
+      },
+      {
+        "count": 2,
+        "value": "PostgreSQL | Python"
+      },
+      {
+        "count": 2,
+        "value": "Python | TensorFlow"
+      },
+      {
+        "count": 1,
+        "value": ".NET | C#"
+      },
+      {
+        "count": 1,
+        "value": "Amazon Web Services | Docker"
+      },
+      {
+        "count": 1,
+        "value": "C# | Docker"
+      },
+      {
+        "count": 1,
+        "value": "Docker | Kubernetes"
+      },
+      {
+        "count": 1,
+        "value": "Docker | Python"
+      },
+      {
+        "count": 1,
+        "value": "Java | MongoDB"
+      },
+      {
+        "count": 1,
+        "value": "Linux | MySQL"
+      },
+      {
+        "count": 1,
+        "value": "Linux | PostgreSQL"
+      },
+      {
+        "count": 1,
+        "value": "MongoDB | MySQL"
+      },
+      {
+        "count": 1,
+        "value": "MySQL | PostgreSQL"
+      },
+      {
+        "count": 1,
+        "value": "Node.js | Python"
+      },
+      {
+        "count": 1,
+        "value": "PostgreSQL | Redis"
+      },
+      {
+        "count": 1,
+        "value": "Redis | Spring Boot"
+      }
+    ],
+    "top_skills": [
+      {
+        "count": 4,
+        "value": "Docker"
+      },
+      {
+        "count": 4,
+        "value": "PostgreSQL"
+      },
+      {
+        "count": 4,
+        "value": "Python"
+      },
+      {
+        "count": 3,
+        "value": "C#"
+      },
+      {
+        "count": 2,
+        "value": "Go"
+      },
+      {
+        "count": 2,
+        "value": "Kubernetes"
+      },
+      {
+        "count": 2,
+        "value": "Linux"
+      },
+      {
+        "count": 2,
+        "value": "MySQL"
+      },
+      {
+        "count": 2,
+        "value": "TensorFlow"
+      },
+      {
+        "count": 1,
+        "value": ".NET"
+      },
+      {
+        "count": 1,
+        "value": "Amazon Web Services"
+      },
+      {
+        "count": 1,
+        "value": "Java"
+      },
+      {
+        "count": 1,
+        "value": "MongoDB"
+      },
+      {
+        "count": 1,
+        "value": "Node.js"
+      },
+      {
+        "count": 1,
+        "value": "Redis"
+      },
+      {
+        "count": 1,
+        "value": "Spring Boot"
+      }
+    ]
+  },
+  "source_coverage": [
+    {
+      "count": 19,
+      "value": "topdev"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "data_classification": "SYNTHETIC_TEST_DATA",
+  "cities": {
+    "Ho Chi Minh City": ["tp.hcm", "tp hcm", "hcm", "ho chi minh", "ho chi minh city", "sai gon", "sài gòn"],
+    "Hanoi": ["ha noi", "hà nội", "hanoi"],
+    "Da Nang": ["da nang", "đà nẵng"],
+    "Binh Duong": ["binh duong", "bình dương"],
+    "Dong Nai": ["dong nai", "đồng nai"],
+    "Hai Phong": ["hai phong", "hải phòng"],
+    "Can Tho": ["can tho", "cần thơ"]
+  }
+}

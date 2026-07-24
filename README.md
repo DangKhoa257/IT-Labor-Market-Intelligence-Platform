@@ -66,3 +66,8 @@ Validation was run locally with Python 3.12.10:
 - Ruff: passed
 - Black: passed
 - MyPy: blocked locally by Windows Application Control while importing `librt.base64`; this is an environment restriction, not a confirmed project code error.
+# IT Labor Market Intelligence Platform
+
+## Offline data pipeline
+
+The source-agnostic Phase 2 pipeline enriches canonical JSONL records, validates quality, reports duplicate candidates, and creates descriptive offline analytics. See [DATA_QUALITY_PIPELINE.md](docs/DATA_QUALITY_PIPELINE.md) for the command and generated artifacts.

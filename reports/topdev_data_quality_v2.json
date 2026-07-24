@@ -1,0 +1,204 @@
+{
+  "accepted_records": 19,
+  "city_distribution": [
+    {
+      "count": 12,
+      "value": "Hanoi"
+    },
+    {
+      "count": 7,
+      "value": "Ho Chi Minh City"
+    }
+  ],
+  "closed_state_distribution": [
+    {
+      "count": 19,
+      "value": "ACTIVE"
+    }
+  ],
+  "duplicate_identity_count": 0,
+  "employment_type_distribution": [
+    {
+      "count": 19,
+      "value": "UNSPECIFIED"
+    }
+  ],
+  "experience_parsing_success_rate": 0.8421,
+  "fields": {
+    "company_name_raw": {
+      "coverage": 1.0,
+      "distinct_count": 9,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "experience_raw": {
+      "coverage": 0.8421,
+      "distinct_count": 7,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.1579,
+      "presence_count": 16
+    },
+    "location_raw": {
+      "coverage": 1.0,
+      "distinct_count": 9,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "salary_raw": {
+      "coverage": 1.0,
+      "distinct_count": 3,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "skills_raw": {
+      "coverage": 1.0,
+      "distinct_count": 17,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "source": {
+      "coverage": 1.0,
+      "distinct_count": 1,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "source_job_id": {
+      "coverage": 1.0,
+      "distinct_count": 19,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "source_url": {
+      "coverage": 1.0,
+      "distinct_count": 19,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    },
+    "title_raw": {
+      "coverage": 1.0,
+      "distinct_count": 19,
+      "empty_string_rate": 0.0,
+      "null_rate": 0.0,
+      "presence_count": 19
+    }
+  },
+  "generated_at": "2026-07-24T14:24:09.573703+00:00",
+  "input_record_count": 19,
+  "rejected_records": 0,
+  "salary_disclosed_rate": 0.1053,
+  "salary_parsing_success_rate": 1.0,
+  "skill_extraction_coverage": 0.6842,
+  "title_category_distribution": [
+    {
+      "count": 13,
+      "value": "Unclassified"
+    },
+    {
+      "count": 2,
+      "value": "AI/Machine Learning"
+    },
+    {
+      "count": 2,
+      "value": "Backend"
+    },
+    {
+      "count": 1,
+      "value": "DevOps/Cloud/SRE"
+    },
+    {
+      "count": 1,
+      "value": "UI/UX"
+    }
+  ],
+  "top_skills": [
+    {
+      "count": 4,
+      "value": "Docker"
+    },
+    {
+      "count": 4,
+      "value": "PostgreSQL"
+    },
+    {
+      "count": 4,
+      "value": "Python"
+    },
+    {
+      "count": 3,
+      "value": "C#"
+    },
+    {
+      "count": 2,
+      "value": "Go"
+    },
+    {
+      "count": 2,
+      "value": "Kubernetes"
+    },
+    {
+      "count": 2,
+      "value": "Linux"
+    },
+    {
+      "count": 2,
+      "value": "MySQL"
+    },
+    {
+      "count": 2,
+      "value": "TensorFlow"
+    },
+    {
+      "count": 1,
+      "value": ".NET"
+    },
+    {
+      "count": 1,
+      "value": "Amazon Web Services"
+    },
+    {
+      "count": 1,
+      "value": "Java"
+    },
+    {
+      "count": 1,
+      "value": "MongoDB"
+    },
+    {
+      "count": 1,
+      "value": "Node.js"
+    },
+    {
+      "count": 1,
+      "value": "Redis"
+    },
+    {
+      "count": 1,
+      "value": "Spring Boot"
+    }
+  ],
+  "total_records": 19,
+  "unique_source_job_ids": 19,
+  "validation_issues_by_code": [],
+  "validation_issues_by_severity": [],
+  "work_mode_distribution": [
+    {
+      "count": 14,
+      "value": "UNSPECIFIED"
+    },
+    {
+      "count": 4,
+      "value": "ONSITE"
+    },
+    {
+      "count": 1,
+      "value": "HYBRID"
+    }
+  ]
+}
