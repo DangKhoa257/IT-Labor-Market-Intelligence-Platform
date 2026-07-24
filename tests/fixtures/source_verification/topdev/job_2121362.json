@@ -1,0 +1,31 @@
+{
+  "@context": "http://schema.org",
+  "@type": "JobPosting",
+  "source_job_id_from_url": "2121362",
+  "title": "AI Solution Analyst / AI Product Specialist",
+  "datePosted": "2026-07-23",
+  "validThrough": "2026-08-22",
+  "skills": "Product Owner, Business Analyst, AI",
+  "employmentType": "OTHER",
+  "experienceRequirements": {
+    "monthsOfExperience": 12
+  },
+  "hiringOrganization": {
+    "name": "LinkQ"
+  },
+  "identifier": {
+    "name": "LinkQ",
+    "value": "85784",
+    "verification_note": "Observed value identifies the company, not the job URL ID."
+  },
+  "baseSalary": {
+    "currency": "VND",
+    "unitText": "MONTH",
+    "value": "Negotiable"
+  },
+  "jobLocation": {
+    "addressLocality": "Thành phố Thủ Đức",
+    "addressRegion": "Hồ Chí Minh"
+  },
+  "description_redacted": true
+}

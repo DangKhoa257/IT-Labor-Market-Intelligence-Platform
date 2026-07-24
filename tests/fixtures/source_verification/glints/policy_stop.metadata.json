@@ -1,0 +1,9 @@
+{
+  "source": "glints",
+  "source_url": "https://glints.com/vn/en/about/terms",
+  "fetched_at": "2026-07-24T13:25:34.7672417+07:00",
+  "http_status": 403,
+  "content_type": "unknown (403 response)",
+  "redaction_notes": "No response body retained. Public terms were inspected separately; job-detail testing was stopped.",
+  "evidence_type": "POLICY_STOP_NO_JOB_DETAIL"
+}

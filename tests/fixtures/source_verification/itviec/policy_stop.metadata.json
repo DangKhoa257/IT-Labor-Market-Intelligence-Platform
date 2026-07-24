@@ -1,0 +1,9 @@
+{
+  "source": "itviec",
+  "source_url": "https://itviec.com/blog/terms-and-conditions/",
+  "fetched_at": "2026-07-24T13:25:22.7824400+07:00",
+  "http_status": 200,
+  "content_type": "text/html; charset=UTF-8",
+  "redaction_notes": "No page body retained. Testing stopped before job-detail inspection because the usage terms require manual review.",
+  "evidence_type": "POLICY_STOP_NO_JOB_DETAIL"
+}

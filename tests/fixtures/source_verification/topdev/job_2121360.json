@@ -1,0 +1,31 @@
+{
+  "@context": "http://schema.org",
+  "@type": "JobPosting",
+  "source_job_id_from_url": "2121360",
+  "title": "Java Developer",
+  "datePosted": "2026-07-23",
+  "validThrough": "2026-08-22",
+  "skills": "Java, SQL, Spring Boot",
+  "employmentType": "OTHER",
+  "experienceRequirements": {
+    "monthsOfExperience": 24
+  },
+  "hiringOrganization": {
+    "name": "DTN E-COMMERCE SOFTWARE COMPANY LIMITED"
+  },
+  "identifier": {
+    "name": "DTN E-COMMERCE SOFTWARE COMPANY LIMITED",
+    "value": "78272",
+    "verification_note": "Observed value identifies the company, not the job URL ID."
+  },
+  "baseSalary": {
+    "currency": "VND",
+    "unitText": "MONTH",
+    "value": "15.000.000 VND to 25.000.000 VND"
+  },
+  "jobLocation": {
+    "addressLocality": "Quận Nam Từ Liêm",
+    "addressRegion": "Hà Nội"
+  },
+  "description_redacted": true
+}

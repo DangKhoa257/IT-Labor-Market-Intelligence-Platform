@@ -1,0 +1,31 @@
+{
+  "@context": "http://schema.org",
+  "@type": "JobPosting",
+  "source_job_id_from_url": "2121361",
+  "title": "CHUYÊN VIÊN PHÁT TRIỂN ỨNG DỤNG",
+  "datePosted": "2026-07-23",
+  "validThrough": "2026-08-06",
+  "skills": "JavaScript, SQL, NextJS",
+  "employmentType": "OTHER",
+  "experienceRequirements": {
+    "monthsOfExperience": 24
+  },
+  "hiringOrganization": {
+    "name": "Công ty Cổ phần Tập đoàn Trung Thủy"
+  },
+  "identifier": {
+    "name": "Công ty Cổ phần Tập đoàn Trung Thủy",
+    "value": "95326",
+    "verification_note": "Observed value identifies the company, not the job URL ID."
+  },
+  "baseSalary": {
+    "currency": "VND",
+    "unitText": "MONTH",
+    "value": "16.000.000 VND to 20.000.000 VND"
+  },
+  "jobLocation": {
+    "addressLocality": "Quận 1",
+    "addressRegion": "Hồ Chí Minh"
+  },
+  "description_redacted": true
+}
