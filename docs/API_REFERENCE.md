@@ -18,3 +18,7 @@ The API exposes `/health` and the following `/api/v1` resources:
 Jobs support pagination, keyword search, category, city, company, skill, employment type, work mode, status, disclosed salary, salary-range filters, and deterministic sorting by posted date, collected date, or salary. List responses omit descriptions. Detail responses provide at most a 500-character HTML-stripped preview.
 
 Analytics are descriptive for the persisted sample. Currency groups are never combined.
+
+Salary responses identify `posting_range_midpoint` as the observation basis. When a currency has `sample_count=1`, `statistically_meaningful` is false and the returned mean/median must be read only as that posting's range midpoint.
+
+Quality summaries separate accepted and rejected records, INFO-only notices, WARNING/ERROR records, and deterministic title-classification coverage. INFO notices such as `title_unclassified` do not make a record rejected. Duplicate responses include source identities and URLs for every advisory cluster member.

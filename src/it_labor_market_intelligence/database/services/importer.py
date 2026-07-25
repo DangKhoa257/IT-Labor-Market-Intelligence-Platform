@@ -182,11 +182,17 @@ class DatasetImporter:
         for finding in payload.get("quality_issues", []) + payload.get("normalized", {}).get(
             "validation_issues", []
         ):
+            code = str(finding.get("code", "unknown"))
+            severity = (
+                "INFO"
+                if code == "title_unclassified"
+                else str(finding.get("severity", "INFO")).upper()
+            )
             self.session.add(
                 DataQualityIssue(
                     job_id=job.id,
-                    code=str(finding.get("code", "unknown")),
-                    severity=str(finding.get("severity", "INFO")).upper(),
+                    code=code,
+                    severity=severity,
                     field_name=finding.get("field_name"),
                     message=str(finding.get("message", "")),
                 )

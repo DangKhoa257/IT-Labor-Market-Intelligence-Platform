@@ -89,34 +89,50 @@
       "presence_count": 19
     }
   },
-  "generated_at": "2026-07-24T14:24:09.573703+00:00",
+  "generated_at": "2026-07-24T23:37:00.025469+00:00",
   "input_record_count": 19,
+  "records_with_info_notices": 1,
+  "records_with_warning_or_error_issues": 0,
   "rejected_records": 0,
   "salary_disclosed_rate": 0.1053,
   "salary_parsing_success_rate": 1.0,
   "skill_extraction_coverage": 0.6842,
   "title_category_distribution": [
     {
-      "count": 13,
-      "value": "Unclassified"
+      "count": 6,
+      "value": "AI/Machine Learning"
     },
     {
-      "count": 2,
-      "value": "AI/Machine Learning"
+      "count": 3,
+      "value": "DevOps/Cloud/SRE"
     },
     {
       "count": 2,
       "value": "Backend"
     },
     {
-      "count": 1,
-      "value": "DevOps/Cloud/SRE"
+      "count": 2,
+      "value": "IT Support/System Administration"
+    },
+    {
+      "count": 2,
+      "value": "Mobile"
+    },
+    {
+      "count": 2,
+      "value": "UI/UX"
     },
     {
       "count": 1,
-      "value": "UI/UX"
+      "value": "Business Intelligence"
+    },
+    {
+      "count": 1,
+      "value": "Unclassified"
     }
   ],
+  "title_classification_coverage": 0.9474,
+  "title_classified_records": 18,
   "top_skills": [
     {
       "count": 4,
@@ -185,8 +201,18 @@
   ],
   "total_records": 19,
   "unique_source_job_ids": 19,
-  "validation_issues_by_code": [],
-  "validation_issues_by_severity": [],
+  "validation_issues_by_code": [
+    {
+      "count": 1,
+      "value": "title_unclassified"
+    }
+  ],
+  "validation_issues_by_severity": [
+    {
+      "count": 1,
+      "value": "INFO"
+    }
+  ],
   "work_mode_distribution": [
     {
       "count": 14,

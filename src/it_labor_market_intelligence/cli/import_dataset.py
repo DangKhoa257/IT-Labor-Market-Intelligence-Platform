@@ -9,7 +9,7 @@ from pathlib import Path
 
 from it_labor_market_intelligence.data_io import JsonlParseError
 from it_labor_market_intelligence.database.models import Base
-from it_labor_market_intelligence.database.services import DatasetImporter
+from it_labor_market_intelligence.database.services import DatasetImporter, DuplicateReportImporter
 from it_labor_market_intelligence.database.session import create_database_engine, session_factory
 
 
@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--replace-existing", action="store_true")
     parser.add_argument("--batch-size", type=int, default=100)
+    parser.add_argument("--duplicates-report", type=Path)
     args = parser.parse_args()
     if not args.input.is_file() or args.batch_size < 1:
         print("Invalid input path or batch size", file=sys.stderr)
@@ -36,6 +37,15 @@ def main() -> int:
                 batch_size=args.batch_size,
                 dry_run=args.dry_run,
             )
+            if args.duplicates_report is not None:
+                if not args.duplicates_report.is_file():
+                    raise ValueError(f"Duplicate report does not exist: {args.duplicates_report}")
+                duplicate_counts = DuplicateReportImporter(session).import_path(
+                    args.duplicates_report, dry_run=args.dry_run
+                )
+                counts.update(
+                    {f"duplicate_clusters_{key}": value for key, value in duplicate_counts.items()}
+                )
     except (JsonlParseError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2

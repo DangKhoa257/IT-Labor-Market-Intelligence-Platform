@@ -143,6 +143,21 @@ def test_ambiguous_it_titles_use_source_category_not_title_only(title: str) -> N
     assert is_it_scope(candidate, adapter.normalize_record(candidate)) is True
 
 
+def test_business_model_validation_analyst_has_corroborated_it_evidence() -> None:
+    transport = SyntheticTransport(1)
+    adapter = TopDevAdapter(transport)
+    raw = adapter.extract_raw_record(adapter.fetch_job_detail(transport.job_urls[0]))
+    candidate = replace(
+        raw,
+        title_raw=("Senior Business Model Validation Analyst (BI) - Khối Dữ liệu"),
+        source_category_raw="Information Technology",
+        skills_raw=("Data Analytics", "Big Data", "Data Visualization"),
+    )
+    normalized = adapter.normalize_record(candidate)
+    assert normalized.primary_category == "Business Intelligence"
+    assert is_it_scope(candidate, normalized) is True
+
+
 @pytest.mark.parametrize(
     ("title", "source_category", "source_tags"),
     [

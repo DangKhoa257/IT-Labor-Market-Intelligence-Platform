@@ -7,6 +7,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from it_labor_market_intelligence.domain import FieldProvenance
+from it_labor_market_intelligence.processing.text import comparison_key
 
 RULE_VERSION = "job-taxonomy.v1"
 
@@ -30,8 +31,8 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "AI/Machine Learning",
         "ai_ml",
         re.compile(
-            r"\b(?:ai|ml|machine learning|nlp|computer vision|mlops)\s+"
-            r"(?:engineer|developer|scientist)\b",
+            r"\b(?:ai(?: software| solution)?|agentic|ml|machine learning|nlp|"
+            r"computer vision|mlops)\s+(?:engineer(?:ing)?|developer|scientist|architect)\b",
             re.I,
         ),
     ),
@@ -52,7 +53,8 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "Business Intelligence",
         "business_intelligence",
         re.compile(
-            r"\b(?:business intelligence|bi|power bi)\s+(?:developer|engineer|analyst)\b",
+            r"\b(?:business intelligence|bi|power bi)\s+(?:developer|engineer|analyst)\b|"
+            r"\b(?:business model validation|model validation) analyst\b.*\bbi\b",
             re.I,
         ),
     ),
@@ -66,7 +68,8 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "devops_cloud_sre",
         re.compile(
             r"\b(?:devops|cloud|platform|site reliability|sre|infrastructure)\s+"
-            r"(?:engineer|architect)\b|\bsite reliability\b",
+            r"(?:engineer|architect)\b|\bsite reliability\b|"
+            r"\b(?:giai phap cloud|data center|thiet ke giai phap cntt)\b",
             re.I,
         ),
     ),
@@ -75,7 +78,8 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "cybersecurity",
         re.compile(
             r"\b(?:cyber ?security|security|soc|infosec|appsec)\s+"
-            r"(?:engineer|analyst|specialist)|\bpenetration tester\b",
+            r"(?:engineer|analyst|specialist)|\bpenetration tester\b|"
+            r"\ban toan thong tin\b",
             re.I,
         ),
     ),
@@ -84,7 +88,7 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "mobile",
         re.compile(
             r"\b(?:mobile(?: app)?|android|ios|flutter|react native)\s+"
-            r"(?:developer|engineer)\b",
+            r"(?:game )?(?:developer|engineer)\b",
             re.I,
         ),
     ),
@@ -117,7 +121,8 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         "Business Analyst",
         "business_analyst",
         re.compile(
-            r"\b(?:business|system|requirements|functional|it ba)\s+analyst\b|\bit ba\b",
+            r"\b(?:business|system|requirements|functional|technical|it ba)\s+analyst\b|"
+            r"\bit ba\b",
             re.I,
         ),
     ),
@@ -138,14 +143,19 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     (
         "UI/UX",
         "ui_ux",
-        re.compile(r"\b(?:ui(?:/ux)?|ux|product|interaction)\s+(?:designer|researcher)\b", re.I),
+        re.compile(
+            r"\b(?:ui(?:/ux)?|ui ux|ux ui|ux|product|interaction)\s+"
+            r"(?:designer|researcher|artist)\b",
+            re.I,
+        ),
     ),
     (
         "IT Support/System Administration",
         "it_support",
         re.compile(
             r"\b(?:it|desktop)\s+support\b|\bhelp ?desk\b|"
-            r"\b(?:system|network) administrator\b|\bsysadmin\b",
+            r"\b(?:system|network|database) administrator\b|\bsysadmin\b|\bdba\b|"
+            r"\b(?:van hanh ha tang cntt|ha tang cntt)\b",
             re.I,
         ),
     ),
@@ -167,6 +177,10 @@ _CATEGORY_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = (
             re.I,
         ),
     ),
+)
+
+_CLEAR_NON_IT_ROLE = re.compile(
+    r"\b(?:sales|marketing|digital marketing|business development)\b", re.I
 )
 
 _ACRONYMS = {
@@ -206,10 +220,13 @@ def normalize_job_title(title_raw: str) -> TitleNormalization:
     """Normalize a raw title and classify explicit title evidence only."""
 
     normalized_title = _normalize_display_title(title_raw)
+    matching_title = (comparison_key(title_raw) or title_raw.casefold()).replace("_", " ")
     candidates: list[tuple[int, int, str, str]] = []
-    for priority, (category, rule_name, pattern) in enumerate(_CATEGORY_RULES):
-        if match := pattern.search(title_raw):
-            candidates.append((match.start(), priority, category, rule_name))
+    if not _CLEAR_NON_IT_ROLE.search(matching_title):
+        for priority, (category, rule_name, pattern) in enumerate(_CATEGORY_RULES):
+            match = pattern.search(title_raw) or pattern.search(matching_title)
+            if match:
+                candidates.append((match.start(), priority, category, rule_name))
     candidates.sort()
 
     categories: list[str] = []

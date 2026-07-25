@@ -1,24 +1,36 @@
 {
   "category": [
     {
-      "count": 13,
-      "value": "Unclassified"
+      "count": 6,
+      "value": "AI/Machine Learning"
     },
     {
-      "count": 2,
-      "value": "AI/Machine Learning"
+      "count": 3,
+      "value": "DevOps/Cloud/SRE"
     },
     {
       "count": 2,
       "value": "Backend"
     },
     {
-      "count": 1,
-      "value": "DevOps/Cloud/SRE"
+      "count": 2,
+      "value": "IT Support/System Administration"
+    },
+    {
+      "count": 2,
+      "value": "Mobile"
+    },
+    {
+      "count": 2,
+      "value": "UI/UX"
     },
     {
       "count": 1,
-      "value": "UI/UX"
+      "value": "Business Intelligence"
+    },
+    {
+      "count": 1,
+      "value": "Unclassified"
     }
   ],
   "closed_states": [
@@ -65,7 +77,7 @@
       "value": "DaouKiwoom Innovation"
     }
   ],
-  "generated_at": "2026-07-24T14:24:09.573703+00:00",
+  "generated_at": "2026-07-24T23:37:00.025469+00:00",
   "limitations": [
     "Descriptive output is limited to this offline input sample.",
     "Salary statistics are separated by currency; no exchange rate is applied."

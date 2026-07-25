@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,9 +16,16 @@ from sqlalchemy.orm import Session
 
 from apps.api.main import create_app
 from it_labor_market_intelligence.data_io import JsonlParseError, write_jsonl
-from it_labor_market_intelligence.database.models import Base, Company, JobPosting, Skill, Source
-from it_labor_market_intelligence.database.repositories import JobRepository
-from it_labor_market_intelligence.database.services import DatasetImporter
+from it_labor_market_intelligence.database.models import (
+    Base,
+    Company,
+    DuplicateCluster,
+    JobPosting,
+    Skill,
+    Source,
+)
+from it_labor_market_intelligence.database.repositories import JobRepository, QualityRepository
+from it_labor_market_intelligence.database.services import DatasetImporter, DuplicateReportImporter
 
 
 def _payload(
@@ -187,9 +195,86 @@ def test_read_only_endpoints(client: TestClient, endpoint: str) -> None:
 
 
 def test_salary_analytics_separates_currencies(client: TestClient) -> None:
-    data = client.get("/api/v1/analytics/salaries").json()["data"]["by_currency"]
+    payload = client.get("/api/v1/analytics/salaries").json()["data"]
+    data = payload["by_currency"]
     assert [row["currency"] for row in data] == ["USD", "VND"]
     assert all("median" in row for row in data)
+    assert all(row["statistically_meaningful"] is False for row in data)
+    assert "single-posting" in payload["calculation_metadata"]["single_posting_limitation"]
+
+
+def test_duplicate_report_import_is_idempotent_and_api_returns_members(
+    database: tuple[str, Session], tmp_path: Path
+) -> None:
+    url, session = database
+    jobs_path = tmp_path / "jobs.jsonl"
+    write_jsonl(jobs_path, [_payload("1"), _payload("2")])
+    DatasetImporter(session).import_path(jobs_path)
+    report_path = tmp_path / "duplicates.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "method_version": "dedup.v1",
+                "cluster_count": 1,
+                "clusters": [
+                    {
+                        "classification": "POSSIBLE_DUPLICATE",
+                        "representative_index": 0,
+                        "member_indices": [0, 1],
+                        "members": [
+                            {"source": "synthetic", "source_job_id": "1"},
+                            {"source": "synthetic", "source_job_id": "2"},
+                        ],
+                        "decision": {"score": 0.7},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    importer = DuplicateReportImporter(session)
+    assert importer.import_path(report_path)["inserted"] == 1
+    assert importer.import_path(report_path)["skipped"] == 1
+    assert session.scalar(select(func.count(DuplicateCluster.id))) == 1
+    clusters = TestClient(create_app(url)).get("/api/v1/duplicates").json()
+    assert clusters[0]["member_count"] == 2
+    assert clusters[0]["members"][0]["representative"] is True
+
+
+def test_quality_summary_separates_notices_failures_and_title_coverage(
+    database: tuple[str, Session], tmp_path: Path
+) -> None:
+    _, session = database
+    first = _payload("1")
+    first["normalized"]["primary_category"] = "Unclassified"
+    first["normalized"]["validation_issues"] = [
+        {
+            "code": "title_unclassified",
+            "severity": "WARNING",
+            "field_name": "primary_category",
+            "message": "No deterministic title rule matched",
+        }
+    ]
+    second = _payload("2")
+    second["normalized"]["validation_issues"] = [
+        {
+            "code": "salary_suspicious",
+            "severity": "WARNING",
+            "field_name": "salary",
+            "message": "Synthetic warning",
+        }
+    ]
+    path = tmp_path / "quality.jsonl"
+    write_jsonl(path, [first, second])
+    DatasetImporter(session).import_path(path)
+    summary = QualityRepository(session).summary()
+    assert summary["accepted_records"] == 2
+    assert summary["rejected_records"] == 0
+    assert summary["records_with_info_notices"] == 1
+    assert summary["records_with_warning_or_error_issues"] == 1
+    assert summary["title_classification_coverage"] == 0.5
+    title_issue = next(item for item in summary["issues"] if item["code"] == "title_unclassified")
+    assert title_issue["severity"] == "INFO"
 
 
 def test_query_validation(client: TestClient) -> None:

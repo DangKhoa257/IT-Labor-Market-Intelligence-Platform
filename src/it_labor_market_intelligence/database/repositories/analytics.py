@@ -50,7 +50,7 @@ class AnalyticsRepository:
         )
         return [{"value": value, "count": count} for value, count in rows]
 
-    def salaries(self) -> dict[str, list[dict[str, Any]]]:
+    def salaries(self) -> dict[str, Any]:
         rows = self.session.execute(
             select(
                 JobPosting.salary_currency,
@@ -84,6 +84,13 @@ class AnalyticsRepository:
                     "max": max(value[1] for value in values),
                     "mean": mean((value[0] + value[1]) / 2 for value in values),
                     "median": median((value[0] + value[1]) / 2 for value in values),
+                    "calculation_basis": "posting_range_midpoint",
+                    "statistically_meaningful": len(values) > 1,
+                    "interpretation": (
+                        "Descriptive across multiple postings."
+                        if len(values) > 1
+                        else "Single-posting range midpoint; not a market mean or median."
+                    ),
                 }
                 for currency, values in sorted(currency_groups.items())
             ],
@@ -107,4 +114,14 @@ class AnalyticsRepository:
                 }
                 for key, values in sorted(city_groups.items())
             ],
+            "calculation_metadata": {
+                "observation_unit": "one midpoint per posting with numeric minimum and maximum",
+                "midpoint_formula": "(salary_min + salary_max) / 2",
+                "single_posting_limitation": (
+                    "For a single-posting sample (sample_count=1), mean and median equal that "
+                    "posting's midpoint and must not "
+                    "be interpreted as a market statistic."
+                ),
+                "currencies_combined": False,
+            },
         }

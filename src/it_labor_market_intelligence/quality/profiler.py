@@ -66,12 +66,17 @@ def profile_dataset(
     employment: Counter[str] = Counter()
     work_modes: Counter[str] = Counter()
     salary_disclosed = salary_parsed = experience_parsed = skill_records = 0
+    info_notice_records = warning_error_records = title_classified_records = 0
     identities: Counter[tuple[str | None, str | None]] = Counter()
     for record in values:
         raw, normalized = _raw(record), _normalized(record)
         identities[(raw.get("source"), raw.get("source_job_id"))] += 1
         states[str(raw.get("closed_state"))] += 1
         categories[str(normalized.get("primary_category"))] += 1
+        title_classified_records += normalized.get("primary_category") not in {
+            None,
+            "Unclassified",
+        }
         salary = normalized.get("salary", {})
         experience = normalized.get("experience", {})
         salary_disclosed += bool(salary.get("disclosed"))
@@ -94,9 +99,22 @@ def profile_dataset(
         work_mode = enrichment.get("work_mode", {}).get("work_mode")
         if work_mode:
             work_modes[str(work_mode)] += 1
-        for finding in record.get("quality_issues", []):
+        findings = [
+            *record.get("quality_issues", []),
+            *normalized.get("validation_issues", []),
+        ]
+        severities = {
+            str(finding.get("severity", "INFO")).upper()
+            for finding in findings
+            if isinstance(finding, dict)
+        }
+        info_notice_records += "INFO" in severities
+        warning_error_records += bool(severities & {"WARNING", "ERROR"})
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
             issue_codes[str(finding.get("code"))] += 1
-            issue_levels[str(finding.get("severity"))] += 1
+            issue_levels[str(finding.get("severity", "INFO")).upper()] += 1
     return {
         "total_records": total,
         "accepted_records": total if accepted_count is None else accepted_count,
@@ -110,6 +128,10 @@ def profile_dataset(
         "salary_parsing_success_rate": _rate(salary_parsed, total),
         "experience_parsing_success_rate": _rate(experience_parsed, total),
         "skill_extraction_coverage": _rate(skill_records, total),
+        "records_with_info_notices": info_notice_records,
+        "records_with_warning_or_error_issues": warning_error_records,
+        "title_classified_records": title_classified_records,
+        "title_classification_coverage": _rate(title_classified_records, total),
         "closed_state_distribution": _top(states),
         "title_category_distribution": _top(categories),
         "city_distribution": _top(cities),

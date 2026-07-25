@@ -13,9 +13,10 @@ Apply the schema and import the analysis-ready dataset:
 alembic upgrade head
 python -m it_labor_market_intelligence.cli.import_dataset `
   --input datasets/processed/topdev_analysis_ready.jsonl `
-  --source topdev
+  --source topdev `
+  --duplicates-report reports/topdev_duplicates.json
 ```
 
-Re-running the command skips existing identities. Use `--replace-existing` to update their canonical fields and rebuild quality/skill relations. `--dry-run` rolls back all changes. `--batch-size` controls commit size.
+Re-running the command skips existing identities and duplicate clusters. Use `--replace-existing` to update canonical fields and rebuild quality/skill relations. Duplicate report members are resolved by source and source job ID; unresolved members fail the import rather than silently producing partial clusters. `--dry-run` rolls back changes. `--batch-size` controls job commit size.
 
 Stop PostgreSQL with `docker compose down`. The named volume remains until explicitly removed.

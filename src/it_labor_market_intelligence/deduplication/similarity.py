@@ -35,15 +35,14 @@ def compare_records(left: dict[str, Any], right: dict[str, Any]) -> dict[str, An
     explicit_company_conflict = bool(
         first["company"] and second["company"] and first["company"] != second["company"]
     )
-    classification = (
-        "DISTINCT"
-        if explicit_company_conflict
-        else (
-            "PROBABLE_DUPLICATE"
-            if score >= 0.8
-            else "POSSIBLE_DUPLICATE" if score >= 0.6 else "DISTINCT"
-        )
-    )
+    if explicit_company_conflict:
+        classification = "DISTINCT"
+    elif score >= 0.8:
+        classification = "PROBABLE_DUPLICATE"
+    elif score >= 0.6:
+        classification = "POSSIBLE_DUPLICATE"
+    else:
+        classification = "DISTINCT"
     return {
         "classification": classification,
         "score": round(score, 4),

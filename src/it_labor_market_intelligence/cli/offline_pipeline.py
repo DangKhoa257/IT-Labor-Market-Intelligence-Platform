@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from it_labor_market_intelligence.data_io import JsonlParseError, iter_jsonl, wr
 from it_labor_market_intelligence.deduplication import deduplicate_records
 from it_labor_market_intelligence.processing.companies import normalize_company
 from it_labor_market_intelligence.processing.employment import normalize_employment_type
+from it_labor_market_intelligence.processing.job_titles import normalize_job_title
 from it_labor_market_intelligence.processing.locations import normalize_location
 from it_labor_market_intelligence.processing.work_modes import normalize_work_mode
 from it_labor_market_intelligence.quality import profile_dataset, validate_dataset
@@ -21,10 +23,42 @@ from it_labor_market_intelligence.quality.report import write_report
 
 
 def enrich_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Attach Phase 2 normalizers without changing source or canonical parser payloads."""
+    """Apply the current deterministic normalizers to an existing canonical record."""
 
     result = dict(record)
     raw = result.get("raw", {})
+    normalized = dict(result.get("normalized", {}))
+    title_raw = raw.get("title_raw")
+    if isinstance(title_raw, str):
+        title = normalize_job_title(title_raw)
+        normalized.update(
+            {
+                "title_normalized": title.title_normalized,
+                "primary_category": title.primary_category,
+                "secondary_categories": list(title.secondary_categories),
+            }
+        )
+        provenance = dict(normalized.get("field_provenance", {}))
+        title_provenance = asdict(title.provenance)
+        for field in ("title_normalized", "primary_category", "secondary_categories"):
+            provenance[field] = title_provenance
+        normalized["field_provenance"] = provenance
+        issues = [
+            issue
+            for issue in normalized.get("validation_issues", [])
+            if not isinstance(issue, dict) or issue.get("code") != "title_unclassified"
+        ]
+        if title.primary_category == "Unclassified":
+            issues.append(
+                {
+                    "field_name": "primary_category",
+                    "code": "title_unclassified",
+                    "message": "No deterministic title rule matched",
+                    "severity": "INFO",
+                }
+            )
+        normalized["validation_issues"] = issues
+    result["normalized"] = normalized
     result["enrichment"] = {
         "company": normalize_company(raw.get("company_name_raw")),
         "location": normalize_location(raw.get("location_raw")),

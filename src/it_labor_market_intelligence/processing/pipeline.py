@@ -89,7 +89,7 @@ def normalize_job_record(
                 "primary_category",
                 "title_unclassified",
                 "No deterministic title rule matched",
-                "warning",
+                "INFO",
             )
         )
 
