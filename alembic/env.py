@@ -4,13 +4,13 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from it_labor_market_intelligence.database.config import get_database_url
-from it_labor_market_intelligence.database.models import Base
+from it_labor_market_intelligence.database.v1_models import V1Base
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 config.set_main_option("sqlalchemy.url", get_database_url())
-target_metadata = Base.metadata
+target_metadata = V1Base.metadata
 
 
 def run_migrations_offline() -> None:

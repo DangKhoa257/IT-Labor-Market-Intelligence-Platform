@@ -77,10 +77,14 @@ The source-agnostic Phase 2 pipeline enriches canonical JSONL records, validates
 ```powershell
 docker compose up -d postgres
 alembic upgrade head
-python -m it_labor_market_intelligence.cli.import_dataset --input datasets/processed/topdev_analysis_ready.jsonl --source topdev
+alembic current
 uvicorn apps.api.main:app --reload
 ```
 
-Open Swagger at `http://127.0.0.1:8000/docs`. Use `alembic downgrade -1` to reverse the Phase 3 migration and `docker compose down` to stop PostgreSQL.
+Migrations 001 and 002 create only the private Database V1 system and ingestion-lineage layers;
+they do not yet create canonical/API tables. The current API still uses the Phase 3 prototype ORM.
+See [DATABASE_V1_FOUNDATION.md](docs/DATABASE_V1_FOUNDATION.md) before creating or rebuilding a
+database. Use `alembic downgrade 20260726_0001` to remove only Migration 002 and `docker compose
+down` to stop PostgreSQL.
 
 Run checks with `python -m pytest`, `python -m ruff check .`, and `python -m ruff format --check .`. See [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md), [API_REFERENCE.md](docs/API_REFERENCE.md), and [DATA_IMPORT_RUNBOOK.md](docs/DATA_IMPORT_RUNBOOK.md).
