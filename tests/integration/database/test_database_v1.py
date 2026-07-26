@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -49,16 +50,19 @@ def engine() -> Iterator[sa.Engine]:
 
 
 def _source(connection: sa.Connection, slug: str = "example") -> UUID:
-    return connection.execute(
-        sa.text(
-            """
+    return cast(
+        UUID,
+        connection.execute(
+            sa.text(
+                """
             INSERT INTO ingestion.sources (slug, display_name, base_url, status, is_enabled)
             VALUES (:slug, 'Example Source', 'https://example.test', 'approved', true)
             RETURNING id
         """
-        ),
-        {"slug": slug},
-    ).scalar_one()
+            ),
+            {"slug": slug},
+        ).scalar_one(),
+    )
 
 
 def _reject(engine: sa.Engine, statement: str, parameters: dict[str, object]) -> None:
