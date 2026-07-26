@@ -137,12 +137,13 @@ def _job(
             (source_id, source_job_id, latest_extracted_record_id, company_id, source_url,
              title_raw, first_seen_at, last_seen_at, last_changed_at)
         VALUES (:source_id, :source_job_id, :record_id, :company_id,
-                'https://example.test/jobs/' || :source_job_id, 'Example Engineer',
+                :source_url, 'Example Engineer',
                 now(), now(), now()) RETURNING id
         """,
         {
             "source_id": source_id,
             "source_job_id": source_job_id,
+            "source_url": f"https://example.test/jobs/{source_job_id}",
             "record_id": extracted_record_id,
             "company_id": company_id,
         },
