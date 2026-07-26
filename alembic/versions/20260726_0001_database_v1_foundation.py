@@ -20,7 +20,8 @@ def upgrade() -> None:
     op.execute("REVOKE ALL ON SCHEMA system FROM PUBLIC")
     op.execute("REVOKE ALL ON SCHEMA ingestion FROM PUBLIC")
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE system.pipeline_versions (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             component VARCHAR(50) NOT NULL,
@@ -39,13 +40,17 @@ def upgrade() -> None:
             CONSTRAINT ck_pipeline_versions__git_commit_sha CHECK
                 (git_commit_sha IS NULL OR git_commit_sha ~ '^[0-9a-fA-F]{7,64}$')
         )
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE INDEX ix_pipeline_versions__component_created_at
         ON system.pipeline_versions (component, created_at DESC)
-    """)
+    """
+    )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE system.background_jobs (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             job_name VARCHAR(150) NOT NULL,
@@ -72,7 +77,8 @@ def upgrade() -> None:
             CONSTRAINT ck_background_jobs__timestamps CHECK
                 (finished_at IS NULL OR (started_at IS NOT NULL AND finished_at >= started_at))
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_background_jobs__status_scheduled_for ON system.background_jobs (status, scheduled_for)"
     )
@@ -80,7 +86,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_background_jobs__job_name_created_at ON system.background_jobs (job_name, created_at DESC)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE system.audit_events (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             actor_type VARCHAR(30) NOT NULL,
@@ -99,7 +106,8 @@ def upgrade() -> None:
                 (actor_type IN ('user','service','system','migration','unknown')),
             CONSTRAINT ck_audit_events__action_not_blank CHECK (length(trim(action)) > 0)
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX ix_audit_events__created_at ON system.audit_events (created_at DESC)")
     op.execute(
         "CREATE INDEX ix_audit_events__entity ON system.audit_events (entity_schema, entity_table, entity_id)"
@@ -108,7 +116,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_audit_events__request_id ON system.audit_events (request_id) WHERE request_id IS NOT NULL"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.sources (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             slug VARCHAR(100) NOT NULL,
@@ -137,11 +146,13 @@ def upgrade() -> None:
             CONSTRAINT ck_sources__enabled_only_when_approved CHECK
                 (NOT is_enabled OR status = 'approved')
         )
-    """)
+    """
+    )
     op.execute("CREATE INDEX ix_sources__status_enabled ON ingestion.sources (status, is_enabled)")
     op.execute("CREATE INDEX ix_sources__source_type ON ingestion.sources (source_type)")
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE system.retention_policies (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             source_id UUID,
@@ -166,7 +177,8 @@ def upgrade() -> None:
             CONSTRAINT ck_retention_policies__policy_version_not_blank CHECK
                 (length(trim(policy_version)) > 0)
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE UNIQUE INDEX uq_retention_policies__global_data_class_version ON system.retention_policies (data_class, policy_version) WHERE source_id IS NULL"
     )
@@ -180,7 +192,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_retention_policies__active_data_class ON system.retention_policies (data_class, is_active)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.source_policies (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             source_id UUID NOT NULL,
@@ -221,7 +234,8 @@ def upgrade() -> None:
             CONSTRAINT ck_source_policies__validity CHECK (valid_to IS NULL OR valid_to > valid_from),
             CONSTRAINT ck_source_policies__reviewer CHECK (reviewed_at IS NULL OR reviewed_by IS NOT NULL)
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_source_policies__source_id_valid_from ON ingestion.source_policies (source_id, valid_from DESC)"
     )
@@ -229,7 +243,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_source_policies__active ON ingestion.source_policies (source_id, valid_from, valid_to)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.parser_versions (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             source_id UUID NOT NULL,
@@ -258,7 +273,8 @@ def upgrade() -> None:
                 (retired_at IS NULL OR retired_at >= created_at),
             CONSTRAINT ck_parser_versions__active_not_retired CHECK (NOT is_active OR retired_at IS NULL)
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_parser_versions__source_id_active ON ingestion.parser_versions (source_id, is_active)"
     )

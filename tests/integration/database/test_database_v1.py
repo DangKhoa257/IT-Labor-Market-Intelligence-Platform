@@ -50,11 +50,13 @@ def engine() -> Iterator[sa.Engine]:
 
 def _source(connection: sa.Connection, slug: str = "example") -> UUID:
     return connection.execute(
-        sa.text("""
+        sa.text(
+            """
             INSERT INTO ingestion.sources (slug, display_name, base_url, status, is_enabled)
             VALUES (:slug, 'Example Source', 'https://example.test', 'approved', true)
             RETURNING id
-        """),
+        """
+        ),
         {"slug": slug},
     ).scalar_one()
 
@@ -121,27 +123,33 @@ def test_policy_json_arrays_and_raw_object_storage_constraints(engine: sa.Engine
         source_id = _source(connection, "constraint-source")
     with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
                 INSERT INTO ingestion.source_policies
                     (source_id, policy_version, approved_paths, blocked_paths)
                 VALUES (:source_id, 'bad-json', '{}'::jsonb, '[]'::jsonb)
-            """),
+            """
+            ),
             {"source_id": source_id},
         )
     with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.raw_objects (sha256, storage_provider, byte_size)
             VALUES (:sha, 'inline', 1)
-        """),
+        """
+            ),
             {"sha": "a" * 64},
         )
     with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.raw_objects (sha256, storage_provider, byte_size)
             VALUES (:sha, 'filesystem', 1)
-        """),
+        """
+            ),
             {"sha": "b" * 64},
         )
 
@@ -150,18 +158,22 @@ def test_run_task_raw_and_timestamp_constraints(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         source_id = _source(connection, "checklist-source")
         run_id = connection.execute(
-            sa.text("""
+            sa.text(
+                """
                 INSERT INTO ingestion.crawl_runs (source_id, run_type, trigger_type)
                 VALUES (:source_id, 'test', 'test') RETURNING id
-            """),
+            """
+            ),
             {"source_id": source_id},
         ).scalar_one()
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
                 INSERT INTO ingestion.raw_objects
                     (sha256, storage_provider, inline_payload_json, byte_size)
                 VALUES (:sha, 'inline', '{}'::jsonb, 2)
-            """),
+            """
+            ),
             {"sha": "d" * 64},
         )
 
@@ -226,52 +238,64 @@ def test_lineage_constraints_and_cascade(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         source_id = _source(connection, "lineage-source")
         parser_id = connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.parser_versions
                 (source_id, parser_name, version, schema_version)
             VALUES (:source_id, 'fixture-parser', '1', 'direct.v1') RETURNING id
-        """),
+        """
+            ),
             {"source_id": source_id},
         ).scalar_one()
         run_id = connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.crawl_runs (source_id, run_type, trigger_type)
             VALUES (:source_id, 'test', 'test') RETURNING id
-        """),
+        """
+            ),
             {"source_id": source_id},
         ).scalar_one()
         task_id = connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.crawl_tasks (crawl_run_id, source_id, task_type, requested_url)
             VALUES (:run_id, :source_id, 'detail_page', 'https://example.test/jobs/1') RETURNING id
-        """),
+        """
+            ),
             {"run_id": run_id, "source_id": source_id},
         ).scalar_one()
         fetch_id = connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.fetch_events
                 (crawl_run_id, crawl_task_id, source_id, requested_url, http_status,
                  robots_allowed, fetch_outcome, fetched_at)
             VALUES (:run_id, :task_id, :source_id, 'https://example.test/jobs/1', 200,
                     true, 'success', now()) RETURNING id
-        """),
+        """
+            ),
             {"run_id": run_id, "task_id": task_id, "source_id": source_id},
         ).scalar_one()
         extraction_id = connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.extraction_runs (crawl_run_id, fetch_event_id, parser_version_id)
             VALUES (:run_id, :fetch_id, :parser_id) RETURNING id
-        """),
+        """
+            ),
             {"run_id": run_id, "fetch_id": fetch_id, "parser_id": parser_id},
         ).scalar_one()
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.extracted_records
                 (extraction_run_id, source_id, source_job_id, fetch_event_id,
                  record_schema_version, direct_payload_json, direct_hash, extracted_at)
             VALUES (:extraction_id, :source_id, 'job-1', :fetch_id,
                     'direct.v1', '{}'::jsonb, :direct_hash, now())
-        """),
+        """
+            ),
             {
                 "extraction_id": extraction_id,
                 "source_id": source_id,
@@ -349,20 +373,49 @@ def test_invalid_fetch_extraction_and_error_constraints(engine: sa.Engine) -> No
         ).scalar_one()
     with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
             INSERT INTO ingestion.fetch_events
                 (crawl_run_id, source_id, requested_url, http_status, fetch_outcome, fetched_at)
             VALUES (:run_id, :source_id, 'https://example.test', 500, 'success', now())
-        """),
+        """
+            ),
             {"run_id": run_id, "source_id": source_id},
         )
     with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(
-            sa.text("""
+            sa.text(
+                """
+            INSERT INTO ingestion.fetch_events
+                (crawl_run_id, source_id, requested_url, http_status, fetch_outcome, fetched_at)
+            VALUES (:run_id, :source_id, 'https://example.test/success-null',
+                    NULL, 'success', now())
+        """
+            ),
+            {"run_id": run_id, "source_id": source_id},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+            INSERT INTO ingestion.fetch_events
+                (crawl_run_id, source_id, requested_url, robots_allowed,
+                 fetch_outcome, fetched_at)
+            VALUES (:run_id, :source_id, 'https://example.test/robots-null',
+                    NULL, 'robots_disallowed', now())
+        """
+            ),
+            {"run_id": run_id, "source_id": source_id},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
             INSERT INTO ingestion.crawl_errors
                 (crawl_run_id, source_id, stage, category, sanitized_message)
             VALUES (:run_id, :source_id, 'fetch', 'unexpected', 'safe fixture error')
-        """),
+        """
+            ),
             {"run_id": run_id, "source_id": source_id},
         )
 

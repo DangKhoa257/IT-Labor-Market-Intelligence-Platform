@@ -9,7 +9,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.crawl_runs (
             id UUID DEFAULT gen_random_uuid() NOT NULL,
             source_id UUID NOT NULL,
@@ -65,7 +66,8 @@ def upgrade() -> None:
             CONSTRAINT ck_crawl_runs__git_commit_sha CHECK
                 (git_commit_sha IS NULL OR git_commit_sha ~ '^[0-9a-fA-F]{7,64}$')
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_crawl_runs__source_id_started_at ON ingestion.crawl_runs (source_id, started_at DESC)"
     )
@@ -79,7 +81,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_crawl_runs__pipeline_version_id ON ingestion.crawl_runs (pipeline_version_id)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.crawl_tasks (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             crawl_run_id UUID NOT NULL,
@@ -116,7 +119,8 @@ def upgrade() -> None:
             CONSTRAINT ck_crawl_tasks__timestamps CHECK
                 (finished_at IS NULL OR (started_at IS NOT NULL AND finished_at >= started_at))
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE UNIQUE INDEX uq_crawl_tasks__run_type_source_job ON ingestion.crawl_tasks (crawl_run_id, task_type, source_job_id) WHERE source_job_id IS NOT NULL"
     )
@@ -130,7 +134,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_crawl_tasks__status_scheduled_for ON ingestion.crawl_tasks (status, scheduled_for)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.raw_objects (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             sha256 CHAR(64) NOT NULL,
@@ -162,7 +167,8 @@ def upgrade() -> None:
                   AND bucket_name IS NULL AND object_key IS NULL)
                  OR (storage_provider != 'inline' AND object_key IS NOT NULL))
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_raw_objects__expires_at ON ingestion.raw_objects (expires_at) WHERE expires_at IS NOT NULL"
     )
@@ -171,7 +177,8 @@ def upgrade() -> None:
     )
     op.execute("CREATE INDEX ix_raw_objects__created_at ON ingestion.raw_objects (created_at DESC)")
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.fetch_events (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             crawl_run_id UUID NOT NULL,
@@ -213,11 +220,13 @@ def upgrade() -> None:
                 ('success','http_error','network_error','timeout','blocked_by_policy',
                  'robots_disallowed','invalid_content','cancelled','other_error')),
             CONSTRAINT ck_fetch_events__success_status CHECK
-                (fetch_outcome != 'success' OR http_status BETWEEN 200 AND 399),
+                (fetch_outcome != 'success'
+                 OR (http_status IS NOT NULL AND http_status BETWEEN 200 AND 399)),
             CONSTRAINT ck_fetch_events__robots_outcome CHECK
-                (fetch_outcome != 'robots_disallowed' OR robots_allowed = false)
+                (fetch_outcome != 'robots_disallowed' OR robots_allowed IS FALSE)
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_fetch_events__run_fetched_at ON ingestion.fetch_events (crawl_run_id, fetched_at)"
     )
@@ -235,7 +244,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_fetch_events__raw_object_id ON ingestion.fetch_events (raw_object_id) WHERE raw_object_id IS NOT NULL"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.extraction_runs (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             crawl_run_id UUID,
@@ -268,7 +278,8 @@ def upgrade() -> None:
                 (finished_at IS NULL OR (started_at IS NOT NULL AND finished_at >= started_at)),
             CONSTRAINT ck_extraction_runs__running_started CHECK (status != 'running' OR started_at IS NOT NULL)
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_extraction_runs__parser_version_id_created_at ON ingestion.extraction_runs (parser_version_id, created_at DESC)"
     )
@@ -279,7 +290,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_extraction_runs__crawl_run_id ON ingestion.extraction_runs (crawl_run_id)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.extracted_records (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             extraction_run_id BIGINT NOT NULL,
@@ -315,7 +327,8 @@ def upgrade() -> None:
             CONSTRAINT ck_extracted_records__payload_object CHECK
                 (jsonb_typeof(direct_payload_json) = 'object')
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_extracted_records__source_identity ON ingestion.extracted_records (source_id, source_job_id)"
     )
@@ -329,7 +342,8 @@ def upgrade() -> None:
         "CREATE INDEX ix_extracted_records__direct_hash ON ingestion.extracted_records (direct_hash)"
     )
 
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE ingestion.crawl_errors (
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             crawl_run_id UUID NOT NULL,
@@ -376,7 +390,8 @@ def upgrade() -> None:
                 (crawl_task_id IS NOT NULL OR fetch_event_id IS NOT NULL
                  OR extraction_run_id IS NOT NULL OR url IS NOT NULL OR source_job_id IS NOT NULL)
         )
-    """)
+    """
+    )
     op.execute(
         "CREATE INDEX ix_crawl_errors__run_occurred_at ON ingestion.crawl_errors (crawl_run_id, occurred_at)"
     )
