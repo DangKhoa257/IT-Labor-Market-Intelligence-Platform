@@ -1,8 +1,8 @@
 # Database V1 Foundation
 
-Database V1 migrations 001 and 002 implement only the operational foundation and ingestion
-lineage layers. They do not implement the later canonical, taxonomy, history, quality,
-analytics, or serving schemas.
+Database V1 migrations 001 and 002 implement the operational foundation and ingestion lineage
+layers. Migration 003 adds the separately documented canonical current-state and taxonomy layer.
+History, quality redesign, analytics, and serving schemas remain unimplemented.
 
 ## Schemas and responsibilities
 
@@ -35,7 +35,7 @@ policies after review. Fetch failures are observations and never imply that a po
 
 ## Security boundary
 
-Both schemas revoke schema privileges from PostgreSQL `PUBLIC`. They are for the owner/migration
+All four V1 schemas revoke schema privileges from PostgreSQL `PUBLIC`. They are for the owner/migration
 role and a future narrowly granted backend service role, not Supabase `anon` or frontend users.
 RLS and Supabase role grants are deliberately deferred to a deployment-specific security
 migration so local PostgreSQL does not depend on Supabase-only roles. JSON metadata, headers,
@@ -54,7 +54,9 @@ alembic upgrade head
 ```
 
 Migration 001 creates the extension, private schemas, and seven foundation tables. Migration 002
-adds seven ingestion execution/lineage tables. Downgrade 002 leaves the foundation intact.
+adds seven ingestion execution/lineage tables. Migration 003 creates exactly 17 `core` and
+`taxonomy` tables; see [DATABASE_V1_CORE.md](DATABASE_V1_CORE.md). Downgrade to 002 removes only
+Migration 003.
 
 ## Legacy baseline decision
 
@@ -65,6 +67,7 @@ remain available to the current API and SQLite unit tests, but Alembic no longer
 prototype canonical tables. No migration drops them from an existing database.
 
 Existing local prototype databases should be recreated. Preserve any required pilot artifacts,
-upgrade a clean PostgreSQL database, and reimport pilot data only after the later canonical V1
-migrations exist; migrations 001 and 002 intentionally have no canonical job destination.
+upgrade a clean PostgreSQL database, and retain pilot artifacts for a future canonical application
+service. Migration 003 provides the destination schema but intentionally does not implement a full
+importer.
 

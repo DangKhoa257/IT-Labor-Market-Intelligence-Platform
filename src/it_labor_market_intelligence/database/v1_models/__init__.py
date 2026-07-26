@@ -1,6 +1,18 @@
-"""Schema-qualified ORM models for Database V1 migrations 001 and 002."""
+"""Schema-qualified ORM models for Database V1 migrations 001 through 003."""
 
 from .base import V1Base
+from .core import (
+    Company,
+    CompanyAlias,
+    CompanyDomain,
+    CoreJobPosting,
+    JobPostingDescription,
+    JobPostingLocation,
+    JobPostingOccupation,
+    JobPostingSkill,
+    Location,
+    SalaryOffer,
+)
 from .ingestion import (
     CrawlError,
     CrawlRun,
@@ -14,21 +26,47 @@ from .ingestion import (
     SourcePolicy,
 )
 from .system import AuditEvent, BackgroundJob, PipelineVersion, RetentionPolicy
+from .taxonomy import (
+    EmploymentType,
+    Occupation,
+    OccupationAlias,
+    SeniorityLevel,
+    Skill,
+    SkillAlias,
+    TaxonomyVersion,
+)
 
 __all__ = [
     "AuditEvent",
     "BackgroundJob",
+    "Company",
+    "CompanyAlias",
+    "CompanyDomain",
+    "CoreJobPosting",
     "CrawlError",
     "CrawlRun",
     "CrawlTask",
     "ExtractedRecord",
     "ExtractionRun",
     "FetchEvent",
+    "EmploymentType",
+    "JobPostingDescription",
+    "JobPostingLocation",
+    "JobPostingOccupation",
+    "JobPostingSkill",
+    "Location",
+    "Occupation",
+    "OccupationAlias",
     "ParserVersion",
     "PipelineVersion",
     "RawObject",
     "RetentionPolicy",
+    "SalaryOffer",
+    "SeniorityLevel",
+    "Skill",
+    "SkillAlias",
     "Source",
     "SourcePolicy",
+    "TaxonomyVersion",
     "V1Base",
 ]
