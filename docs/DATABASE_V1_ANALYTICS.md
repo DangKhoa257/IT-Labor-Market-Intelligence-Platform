@@ -39,6 +39,9 @@ Creating a job fact finalizes its historical child snapshot. Descriptions, locat
 skills, and occupations can be inserted before the fact, but PostgreSQL rejects later child
 inserts with SQLSTATE `23514`. Status/change/repost event insertion is unaffected. A correction
 uses a new `history.job_observations` row and its own fact instead of changing the finalized state.
+This is concurrency-safe: fact creation and child insertion both lock the same parent observation
+row before inspecting children or facts. The fixed parent-then-dependent lock order ensures a
+child-first commit is counted and a fact-first commit rejects the waiting child insert.
 
 The six mutable daily tables use these complete grains:
 

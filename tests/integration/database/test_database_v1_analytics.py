@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from threading import Event
 from typing import cast
 from uuid import UUID
 
@@ -69,6 +72,104 @@ def _reject_with(
         connection.execute(sa.text(sql), values)
     assert message in str(error.value.orig)
     return error.value
+
+
+def _unloaded_observation(
+    connection: sa.Connection,
+    catalog: dict[str, object],
+    *,
+    suffix: str,
+    observed_at: str,
+    canonical_hash: str,
+) -> tuple[UUID, int]:
+    parser_id = cast(
+        UUID,
+        _one(
+            connection,
+            """INSERT INTO ingestion.parser_versions
+                   (source_id, parser_name, version, schema_version)
+               VALUES (:source, :name, '1', 'direct.v1') RETURNING id""",
+            {"source": catalog["source_id"], "name": f"analytics-concurrency-{suffix}"},
+        ),
+    )
+    extraction_id = cast(
+        int,
+        _one(
+            connection,
+            """INSERT INTO ingestion.extraction_runs
+                   (crawl_run_id, fetch_event_id, parser_version_id)
+               VALUES (:crawl, :fetch, :parser) RETURNING id""",
+            {
+                "crawl": catalog["crawl_id"],
+                "fetch": catalog["fetch_id"],
+                "parser": parser_id,
+            },
+        ),
+    )
+    source_job_id = f"analytics-concurrency-{suffix}"
+    record_id = cast(
+        int,
+        _one(
+            connection,
+            """INSERT INTO ingestion.extracted_records
+                   (extraction_run_id, source_id, source_job_id, fetch_event_id,
+                    record_schema_version, direct_payload_json, direct_hash, extracted_at)
+               VALUES (:extraction, :source, :source_job_id, :fetch, 'direct.v1',
+                       '{}'::jsonb, :hash, :observed_at) RETURNING id""",
+            {
+                "extraction": extraction_id,
+                "source": catalog["source_id"],
+                "source_job_id": source_job_id,
+                "fetch": catalog["fetch_id"],
+                "hash": canonical_hash,
+                "observed_at": observed_at,
+            },
+        ),
+    )
+    job_id = cast(
+        UUID,
+        _one(
+            connection,
+            """INSERT INTO core.job_postings
+                   (source_id, source_job_id, source_url, title_raw,
+                    first_seen_at, last_seen_at, last_changed_at)
+               VALUES (:source, :source_job_id, :url,
+                       'EXAMPLE_NOT_REAL_DATA Concurrent Engineer', :observed_at,
+                       :observed_at, :observed_at) RETURNING id""",
+            {
+                "source": catalog["source_id"],
+                "source_job_id": source_job_id,
+                "url": f"https://example.test/jobs/{source_job_id}",
+                "observed_at": observed_at,
+            },
+        ),
+    )
+    observation_id = cast(
+        int,
+        _one(
+            connection,
+            """INSERT INTO history.job_observations
+                   (job_posting_id, source_id, source_job_id, extracted_record_id,
+                    crawl_run_id, observation_reason, observed_at, canonical_hash,
+                    status, source_url, title_raw, canonical_payload_json,
+                    normalization_version)
+               VALUES (:job, :source, :source_job_id, :record, :crawl, 'first_seen',
+                       :observed_at, :hash, 'active', :url,
+                       'EXAMPLE_NOT_REAL_DATA Concurrent Engineer', '{}'::jsonb,
+                       'analytics.v1') RETURNING id""",
+            {
+                "job": job_id,
+                "source": catalog["source_id"],
+                "source_job_id": source_job_id,
+                "record": record_id,
+                "crawl": catalog["crawl_id"],
+                "observed_at": observed_at,
+                "hash": canonical_hash,
+                "url": f"https://example.test/jobs/{source_job_id}",
+            },
+        ),
+    )
+    return job_id, observation_id
 
 
 @pytest.fixture(scope="module")
@@ -1448,6 +1549,166 @@ def test_job_fact_finalizes_historical_child_snapshot(
             ).one()
             == (True, 2, 2, 1)
         )
+
+
+def test_observation_finalization_is_concurrency_safe(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    with engine.begin() as connection:
+        child_first_job, child_first_observation = _unloaded_observation(
+            connection,
+            catalog,
+            suffix="child-first",
+            observed_at="2026-01-20T08:00:00Z",
+            canonical_hash="1" * 64,
+        )
+        fact_first_job, fact_first_observation = _unloaded_observation(
+            connection,
+            catalog,
+            suffix="fact-first",
+            observed_at="2026-01-21T08:00:00Z",
+            canonical_hash="2" * 64,
+        )
+
+    fact_sql = """INSERT INTO analytics.fact_job_observations
+                      (observation_id, job_posting_id, source_key, observed_date_key,
+                       observation_reason, status, salary_disclosed, skill_count,
+                       occupation_count, location_count, is_first_observation,
+                       is_status_change, is_content_change, canonical_hash,
+                       normalization_version, refresh_run_id)
+                  VALUES (:observation, :job, :source, :date_key, 'first_seen', 'active',
+                          false, :skill_count, 0, 0, true, false, false, :hash,
+                          'analytics.v1', :refresh) RETURNING job_observation_fact_id"""
+
+    def insert_fact(
+        started: Event,
+        *,
+        observation: int,
+        job: UUID,
+        date_key: int,
+        canonical_hash: str,
+        skill_count: int,
+    ) -> int:
+        with engine.begin() as connection:
+            connection.execute(sa.text("SET LOCAL lock_timeout = '5s'"))
+            connection.execute(sa.text("SET LOCAL statement_timeout = '10s'"))
+            started.set()
+            return cast(
+                int,
+                connection.execute(
+                    sa.text(fact_sql),
+                    {
+                        "observation": observation,
+                        "job": job,
+                        "source": catalog["source_key"],
+                        "date_key": date_key,
+                        "skill_count": skill_count,
+                        "hash": canonical_hash,
+                        "refresh": catalog["refresh_id"],
+                    },
+                ).scalar_one(),
+            )
+
+    child_connection = engine.connect()
+    child_transaction = child_connection.begin()
+    try:
+        child_connection.execute(sa.text("SET LOCAL lock_timeout = '5s'"))
+        child_connection.execute(sa.text("SET LOCAL statement_timeout = '10s'"))
+        child_connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_skills
+                       (observation_id, skill_id, requirement_type)
+                   VALUES (:observation, :skill, 'required')"""
+            ),
+            {
+                "observation": child_first_observation,
+                "skill": catalog["skill_id"],
+            },
+        )
+        child_first_started = Event()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            child_first_future = executor.submit(
+                insert_fact,
+                child_first_started,
+                observation=child_first_observation,
+                job=child_first_job,
+                date_key=20260120,
+                canonical_hash="1" * 64,
+                skill_count=1,
+            )
+            assert child_first_started.wait(timeout=2)
+            time.sleep(0.2)
+            assert not child_first_future.done()
+            child_transaction.commit()
+            child_first_fact = child_first_future.result(timeout=10)
+    finally:
+        if child_transaction.is_active:
+            child_transaction.rollback()
+        child_connection.close()
+
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                sa.text(
+                    """SELECT skill_count FROM analytics.fact_job_observations
+                   WHERE job_observation_fact_id=:fact"""
+                ),
+                {"fact": child_first_fact},
+            ).scalar_one()
+            == 1
+        )
+
+    fact_connection = engine.connect()
+    fact_transaction = fact_connection.begin()
+    try:
+        fact_connection.execute(sa.text("SET LOCAL lock_timeout = '5s'"))
+        fact_connection.execute(sa.text("SET LOCAL statement_timeout = '10s'"))
+        fact_connection.execute(
+            sa.text(fact_sql),
+            {
+                "observation": fact_first_observation,
+                "job": fact_first_job,
+                "source": catalog["source_key"],
+                "date_key": 20260121,
+                "skill_count": 0,
+                "hash": "2" * 64,
+                "refresh": catalog["refresh_id"],
+            },
+        ).scalar_one()
+
+        fact_first_started = Event()
+
+        def insert_child() -> None:
+            with engine.begin() as connection:
+                connection.execute(sa.text("SET LOCAL lock_timeout = '5s'"))
+                connection.execute(sa.text("SET LOCAL statement_timeout = '10s'"))
+                fact_first_started.set()
+                connection.execute(
+                    sa.text(
+                        """INSERT INTO history.observation_skills
+                               (observation_id, skill_id, requirement_type)
+                           VALUES (:observation, :skill, 'required')"""
+                    ),
+                    {
+                        "observation": fact_first_observation,
+                        "skill": catalog["skill_id"],
+                    },
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            fact_first_future = executor.submit(insert_child)
+            assert fact_first_started.wait(timeout=2)
+            time.sleep(0.2)
+            assert not fact_first_future.done()
+            fact_transaction.commit()
+            with pytest.raises(IntegrityError) as error:
+                fact_first_future.result(timeout=10)
+            assert getattr(error.value.orig, "sqlstate", None) == "23514"
+            assert "historical observation snapshot is finalized" in str(error.value.orig)
+    finally:
+        if fact_transaction.is_active:
+            fact_transaction.rollback()
+        fact_connection.close()
 
 
 def test_job_fact_rejects_every_cross_wired_field(

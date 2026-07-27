@@ -625,6 +625,15 @@ def upgrade() -> None:
         LANGUAGE plpgsql
         AS $$
         BEGIN
+            PERFORM 1
+            FROM history.job_observations
+            WHERE id = NEW.observation_id
+            FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'analytics job fact observation does not exist'
+                    USING ERRCODE = '23514';
+            END IF;
+
             IF NOT EXISTS (
                 SELECT 1
                 FROM history.job_observations AS observation
@@ -722,6 +731,15 @@ def upgrade() -> None:
         LANGUAGE plpgsql
         AS $$
         BEGIN
+            PERFORM 1
+            FROM history.job_observations
+            WHERE id = NEW.observation_id
+            FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'historical child observation does not exist'
+                    USING ERRCODE = '23514';
+            END IF;
+
             IF EXISTS (
                 SELECT 1
                 FROM analytics.fact_job_observations

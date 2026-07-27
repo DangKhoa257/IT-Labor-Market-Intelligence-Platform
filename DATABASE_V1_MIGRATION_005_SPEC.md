@@ -401,6 +401,12 @@ triggers on descriptions, locations, salaries, skills, and occupations reject ad
 rows with SQLSTATE `23514` once a fact exists. Child snapshot rows may be loaded before the fact;
 status/change/repost events remain unaffected. Corrections require a new observation and fact.
 
+Finalization is transaction-safe. Both job-fact validation and historical child INSERT triggers
+first lock the same `history.job_observations` parent row with `FOR UPDATE`, then inspect children
+or facts. The shared lock order is parent observation followed by child/fact checks. A child-first
+transaction is included in the eventual fact metrics; a fact-first transaction causes the waiting
+child insert to be rejected after the fact commits.
+
 ---
 
 ## 6.2 `analytics.fact_salary_observations`
