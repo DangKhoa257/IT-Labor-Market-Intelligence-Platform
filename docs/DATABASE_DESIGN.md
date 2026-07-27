@@ -23,6 +23,11 @@ taxonomy parent integrity, and bidirectional remote-scope consistency in Postgre
 relying on importer behavior. Alembic revision identifiers and extractor build versions remain
 independent.
 
+Migration 004 avoids foreign-key actions that would mutate append-only history. Historical salary
+snapshots are independent of current salary rows, crawl lineage is restrictive, and specialized
+triggers expose only one-way description retention and field-evidence review transitions. Quality
+context is source-consistent and deletion-restricted.
+
 ```powershell
 alembic upgrade head
 alembic current

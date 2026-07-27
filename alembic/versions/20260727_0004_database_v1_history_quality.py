@@ -10,7 +10,6 @@ depends_on = None
 
 APPEND_ONLY_TABLES = (
     ("history", "job_observations"),
-    ("history", "observation_descriptions"),
     ("history", "observation_locations"),
     ("history", "observation_salaries"),
     ("history", "observation_skills"),
@@ -18,7 +17,6 @@ APPEND_ONLY_TABLES = (
     ("history", "job_status_events"),
     ("history", "job_change_events"),
     ("history", "job_repost_events"),
-    ("quality", "field_evidence"),
     ("quality", "duplicate_candidates"),
 )
 
@@ -34,6 +32,18 @@ def upgrade() -> None:
         "UNIQUE (id, source_id, source_job_id)"
     )
     op.execute(
+        "ALTER TABLE core.job_postings "
+        "ADD CONSTRAINT uq_job_postings__id_source_id UNIQUE (id, source_id)"
+    )
+    op.execute(
+        "ALTER TABLE ingestion.crawl_runs "
+        "ADD CONSTRAINT uq_crawl_runs__id_source_id UNIQUE (id, source_id)"
+    )
+    op.execute(
+        "ALTER TABLE ingestion.extracted_records "
+        "ADD CONSTRAINT uq_extracted_records__id_source_id UNIQUE (id, source_id)"
+    )
+    op.execute(
         """
         CREATE FUNCTION history.prevent_append_only_mutation()
         RETURNS trigger
@@ -42,6 +52,81 @@ def upgrade() -> None:
         BEGIN
             RAISE EXCEPTION '% is append-only', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
                 USING ERRCODE = '23514';
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE FUNCTION history.enforce_description_retention_update()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'history.observation_descriptions cannot be deleted'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF NEW.observation_id IS DISTINCT FROM OLD.observation_id
+               OR NEW.description_format IS DISTINCT FROM OLD.description_format
+               OR NEW.language_code IS DISTINCT FROM OLD.language_code
+               OR NEW.content_hash IS DISTINCT FROM OLD.content_hash
+               OR NEW.retained_until IS DISTINCT FROM OLD.retained_until
+               OR NEW.created_at IS DISTINCT FROM OLD.created_at
+               OR OLD.description_text IS NULL
+               OR NEW.description_text IS NOT NULL
+               OR NEW.redaction_status NOT IN ('redacted', 'expired')
+               OR OLD.redaction_status IN ('redacted', 'expired') THEN
+                RAISE EXCEPTION 'invalid historical description retention transition'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE FUNCTION quality.enforce_field_evidence_review_update()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'quality.field_evidence cannot be deleted'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF ROW(NEW.id, NEW.observation_id, NEW.field_path, NEW.evidence_index,
+                   NEW.classification, NEW.raw_value_json, NEW.normalized_value_json,
+                   NEW.evidence_path, NEW.evidence_section, NEW.extraction_method,
+                   NEW.extractor_version, NEW.normalization_rule,
+                   NEW.normalization_version, NEW.inference_method, NEW.confidence,
+                   NEW.created_at)
+               IS DISTINCT FROM
+               ROW(OLD.id, OLD.observation_id, OLD.field_path, OLD.evidence_index,
+                   OLD.classification, OLD.raw_value_json, OLD.normalized_value_json,
+                   OLD.evidence_path, OLD.evidence_section, OLD.extraction_method,
+                   OLD.extractor_version, OLD.normalization_rule,
+                   OLD.normalization_version, OLD.inference_method, OLD.confidence,
+                   OLD.created_at) THEN
+                RAISE EXCEPTION 'field evidence content and lineage are immutable'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF NEW.review_status IN ('verified', 'rejected')
+               AND (NEW.reviewed_by IS NULL OR NEW.reviewed_at IS NULL) THEN
+                RAISE EXCEPTION 'verified or rejected evidence requires reviewer and review time'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            IF OLD.review_status IN ('verified', 'rejected')
+               AND NEW.review_status = 'unreviewed' THEN
+                RAISE EXCEPTION 'reviewed evidence cannot return to unreviewed'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
         END;
         $$
         """
@@ -83,6 +168,8 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
             CONSTRAINT pk_job_observations PRIMARY KEY (id),
             CONSTRAINT uq_job_observations__id_job UNIQUE (id, job_posting_id),
+            CONSTRAINT uq_job_observations__id_job_source
+                UNIQUE (id, job_posting_id, source_id),
             CONSTRAINT uq_job_observations__id_extracted UNIQUE (id, extracted_record_id),
             CONSTRAINT uq_job_observations__job_extracted_normalization
                 UNIQUE (job_posting_id, extracted_record_id, normalization_version),
@@ -94,7 +181,7 @@ def upgrade() -> None:
                 REFERENCES ingestion.extracted_records(id, source_id, source_job_id)
                 ON DELETE RESTRICT,
             CONSTRAINT fk_job_observations__crawl_run_id__crawl_runs
-                FOREIGN KEY (crawl_run_id) REFERENCES ingestion.crawl_runs(id) ON DELETE SET NULL,
+                FOREIGN KEY (crawl_run_id) REFERENCES ingestion.crawl_runs(id) ON DELETE RESTRICT,
             CONSTRAINT fk_job_observations__previous_job__job_observations
                 FOREIGN KEY (previous_observation_id, job_posting_id)
                 REFERENCES history.job_observations(id, job_posting_id) ON DELETE RESTRICT,
@@ -229,7 +316,6 @@ def upgrade() -> None:
             id BIGINT GENERATED ALWAYS AS IDENTITY,
             observation_id BIGINT NOT NULL,
             offer_index SMALLINT DEFAULT 0 NOT NULL,
-            source_salary_offer_id BIGINT,
             raw_text TEXT,
             amount_min NUMERIC(20,2),
             amount_max NUMERIC(20,2),
@@ -254,9 +340,6 @@ def upgrade() -> None:
             CONSTRAINT fk_observation_salaries__observation_id__job_observations
                 FOREIGN KEY (observation_id) REFERENCES history.job_observations(id)
                 ON DELETE RESTRICT,
-            CONSTRAINT fk_observation_salaries__source_offer_id__salary_offers
-                FOREIGN KEY (source_salary_offer_id) REFERENCES core.salary_offers(id)
-                ON DELETE SET NULL,
             CONSTRAINT uq_observation_salaries__observation_offer
                 UNIQUE (observation_id, offer_index),
             CONSTRAINT ck_observation_salaries__offer_index CHECK (offer_index >= 0),
@@ -503,6 +586,9 @@ def upgrade() -> None:
                 FOREIGN KEY (source_id) REFERENCES ingestion.sources(id) ON DELETE SET NULL,
             CONSTRAINT fk_validation_runs__crawl_run_id__crawl_runs
                 FOREIGN KEY (crawl_run_id) REFERENCES ingestion.crawl_runs(id) ON DELETE SET NULL,
+            CONSTRAINT fk_validation_runs__crawl_source_identity__crawl_runs
+                FOREIGN KEY (crawl_run_id, source_id)
+                REFERENCES ingestion.crawl_runs(id, source_id),
             CONSTRAINT fk_validation_runs__pipeline_version_id__pipeline_versions
                 FOREIGN KEY (pipeline_version_id) REFERENCES system.pipeline_versions(id)
                 ON DELETE SET NULL,
@@ -561,18 +647,31 @@ def upgrade() -> None:
                 FOREIGN KEY (validation_run_id) REFERENCES quality.validation_runs(id)
                 ON DELETE RESTRICT,
             CONSTRAINT fk_data_quality_issues__source_id__sources
-                FOREIGN KEY (source_id) REFERENCES ingestion.sources(id) ON DELETE SET NULL,
+                FOREIGN KEY (source_id) REFERENCES ingestion.sources(id) ON DELETE RESTRICT,
             CONSTRAINT fk_data_quality_issues__crawl_run_id__crawl_runs
-                FOREIGN KEY (crawl_run_id) REFERENCES ingestion.crawl_runs(id) ON DELETE SET NULL,
+                FOREIGN KEY (crawl_run_id) REFERENCES ingestion.crawl_runs(id) ON DELETE RESTRICT,
+            CONSTRAINT fk_data_quality_issues__crawl_source_identity__crawl_runs
+                FOREIGN KEY (crawl_run_id, source_id)
+                REFERENCES ingestion.crawl_runs(id, source_id),
             CONSTRAINT fk_data_quality_issues__extracted_record_id__extracted_records
                 FOREIGN KEY (extracted_record_id) REFERENCES ingestion.extracted_records(id)
-                ON DELETE SET NULL,
+                ON DELETE RESTRICT,
+            CONSTRAINT fk_data_quality_issues__extracted_source__extracted_records
+                FOREIGN KEY (extracted_record_id, source_id)
+                REFERENCES ingestion.extracted_records(id, source_id),
             CONSTRAINT fk_data_quality_issues__job_posting_id__job_postings
                 FOREIGN KEY (job_posting_id) REFERENCES core.job_postings(id)
                 ON DELETE RESTRICT,
+            CONSTRAINT fk_data_quality_issues__job_source_identity__job_postings
+                FOREIGN KEY (job_posting_id, source_id)
+                REFERENCES core.job_postings(id, source_id),
             CONSTRAINT fk_data_quality_issues__observation_job__job_observations
                 FOREIGN KEY (observation_id, job_posting_id)
                 REFERENCES history.job_observations(id, job_posting_id) ON DELETE RESTRICT,
+            CONSTRAINT fk_data_quality_issues__observation_source__job_observations
+                FOREIGN KEY (observation_id, job_posting_id, source_id)
+                REFERENCES history.job_observations(id, job_posting_id, source_id)
+                ON DELETE RESTRICT,
             CONSTRAINT uq_data_quality_issues__run_fingerprint
                 UNIQUE (validation_run_id, fingerprint),
             CONSTRAINT ck_data_quality_issues__severity CHECK
@@ -587,7 +686,7 @@ def upgrade() -> None:
             CONSTRAINT ck_data_quality_issues__evidence_object CHECK
                 (jsonb_typeof(evidence_json) = 'object'),
             CONSTRAINT ck_data_quality_issues__context CHECK
-                (crawl_run_id IS NOT NULL OR extracted_record_id IS NOT NULL
+                (source_id IS NOT NULL OR crawl_run_id IS NOT NULL OR extracted_record_id IS NOT NULL
                  OR job_posting_id IS NOT NULL OR observation_id IS NOT NULL),
             CONSTRAINT ck_data_quality_issues__observation_job CHECK
                 (observation_id IS NULL OR job_posting_id IS NOT NULL),
@@ -618,6 +717,9 @@ def upgrade() -> None:
             inference_method VARCHAR(150),
             confidence NUMERIC(5,4),
             review_status VARCHAR(30) DEFAULT 'unreviewed' NOT NULL,
+            reviewed_by VARCHAR(255),
+            reviewed_at TIMESTAMPTZ,
+            review_notes TEXT,
             created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
             CONSTRAINT pk_field_evidence PRIMARY KEY (id),
             CONSTRAINT fk_field_evidence__observation_id__job_observations
@@ -633,6 +735,9 @@ def upgrade() -> None:
                      'inferred','not_available','unverified')),
             CONSTRAINT ck_field_evidence__review_status CHECK
                 (review_status IN ('unreviewed','verified','rejected','needs_review')),
+            CONSTRAINT ck_field_evidence__reviewer CHECK
+                (review_status NOT IN ('verified','rejected')
+                 OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)),
             CONSTRAINT ck_field_evidence__confidence CHECK
                 (confidence IS NULL OR confidence BETWEEN 0 AND 1),
             CONSTRAINT ck_field_evidence__availability CHECK
@@ -760,6 +865,20 @@ def upgrade() -> None:
             f"BEFORE UPDATE OR DELETE ON {schema}.{table} "
             "FOR EACH ROW EXECUTE FUNCTION history.prevent_append_only_mutation()"
         )
+    op.execute(
+        """
+        CREATE TRIGGER trg_observation_descriptions__retention
+        BEFORE UPDATE OR DELETE ON history.observation_descriptions
+        FOR EACH ROW EXECUTE FUNCTION history.enforce_description_retention_update()
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_field_evidence__review
+        BEFORE UPDATE OR DELETE ON quality.field_evidence
+        FOR EACH ROW EXECUTE FUNCTION quality.enforce_field_evidence_review_update()
+        """
+    )
 
     index_statements = (
         "CREATE INDEX ix_job_observations__job_observed "
@@ -789,14 +908,30 @@ def upgrade() -> None:
         "ON history.observation_occupations (occupation_id)",
         "CREATE INDEX ix_job_status_events__job_event_at "
         "ON history.job_status_events (job_posting_id, event_at DESC)",
+        "CREATE INDEX ix_job_status_events__observation_id "
+        "ON history.job_status_events (observation_id) WHERE observation_id IS NOT NULL",
         "CREATE INDEX ix_job_change_events__job_detected_at "
         "ON history.job_change_events (job_posting_id, detected_at DESC)",
+        "CREATE INDEX ix_job_change_events__to_observation_id "
+        "ON history.job_change_events (to_observation_id)",
+        "CREATE INDEX ix_job_change_events__field_path "
+        "ON history.job_change_events (field_path)",
         "CREATE INDEX ix_job_repost_events__job_detected_at "
         "ON history.job_repost_events (job_posting_id, detected_at DESC)",
+        "CREATE INDEX ix_job_repost_events__new_observation_id "
+        "ON history.job_repost_events (new_observation_id)",
         "CREATE INDEX ix_validation_runs__status_created_at "
         "ON quality.validation_runs (status, created_at DESC)",
         "CREATE INDEX ix_data_quality_issues__status_severity "
         "ON quality.data_quality_issues (status, severity)",
+        "CREATE INDEX ix_data_quality_issues__source_detected_at "
+        "ON quality.data_quality_issues (source_id, detected_at DESC)",
+        "CREATE INDEX ix_data_quality_issues__job_posting_id "
+        "ON quality.data_quality_issues (job_posting_id)",
+        "CREATE INDEX ix_data_quality_issues__observation_id "
+        "ON quality.data_quality_issues (observation_id)",
+        "CREATE INDEX ix_data_quality_issues__issue_code "
+        "ON quality.data_quality_issues (issue_code)",
         "CREATE INDEX ix_field_evidence__observation_id "
         "ON quality.field_evidence (observation_id)",
         "CREATE INDEX ix_duplicate_candidates__left_job_id "
@@ -805,6 +940,8 @@ def upgrade() -> None:
         "ON quality.duplicate_candidates (right_job_posting_id)",
         "CREATE INDEX ix_duplicate_cluster_members__job_posting_id "
         "ON quality.duplicate_cluster_members (job_posting_id)",
+        "CREATE INDEX ix_duplicate_clusters__review_status_created_at "
+        "ON quality.duplicate_clusters (review_status, created_at DESC)",
     )
     for statement in index_statements:
         op.execute(statement)
@@ -832,9 +969,17 @@ def downgrade() -> None:
     op.execute("DROP INDEX core.ix_job_postings__current_observation_id")
     op.execute("ALTER TABLE core.job_postings DROP COLUMN current_observation_id")
     op.execute("DROP TABLE history.job_observations")
+    op.execute("DROP FUNCTION quality.enforce_field_evidence_review_update()")
+    op.execute("DROP FUNCTION history.enforce_description_retention_update()")
     op.execute("DROP FUNCTION history.prevent_append_only_mutation()")
     op.execute(
         "ALTER TABLE core.job_postings " "DROP CONSTRAINT uq_job_postings__id_source_identity"
+    )
+    op.execute("ALTER TABLE core.job_postings DROP CONSTRAINT uq_job_postings__id_source_id")
+    op.execute("ALTER TABLE ingestion.crawl_runs DROP CONSTRAINT uq_crawl_runs__id_source_id")
+    op.execute(
+        "ALTER TABLE ingestion.extracted_records "
+        "DROP CONSTRAINT uq_extracted_records__id_source_id"
     )
     op.execute("DROP SCHEMA quality")
     op.execute("DROP SCHEMA history")

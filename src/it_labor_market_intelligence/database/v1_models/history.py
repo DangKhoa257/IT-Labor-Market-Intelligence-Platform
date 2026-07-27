@@ -19,6 +19,9 @@ class JobObservation(V1Base):
     __tablename__ = "job_observations"
     __table_args__ = (
         sa.UniqueConstraint("id", "job_posting_id", name="uq_job_observations__id_job"),
+        sa.UniqueConstraint(
+            "id", "job_posting_id", "source_id", name="uq_job_observations__id_job_source"
+        ),
         sa.UniqueConstraint("id", "extracted_record_id", name="uq_job_observations__id_extracted"),
         sa.UniqueConstraint(
             "job_posting_id",
@@ -60,7 +63,7 @@ class JobObservation(V1Base):
     source_job_id: Mapped[str] = mapped_column(sa.String(255))
     extracted_record_id: Mapped[int] = mapped_column(sa.BigInteger)
     crawl_run_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.crawl_runs.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.crawl_runs.id", ondelete="RESTRICT")
     )
     previous_observation_id: Mapped[int | None] = mapped_column(sa.BigInteger)
     observation_reason: Mapped[str] = mapped_column(sa.String(30))
@@ -167,9 +170,6 @@ class ObservationSalary(V1Base):
         sa.BigInteger, sa.ForeignKey("history.job_observations.id", ondelete="RESTRICT")
     )
     offer_index: Mapped[int] = mapped_column(sa.SmallInteger, server_default="0")
-    source_salary_offer_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger, sa.ForeignKey("core.salary_offers.id", ondelete="SET NULL")
-    )
     raw_text: Mapped[str | None] = mapped_column(sa.Text)
     amount_min: Mapped[Decimal | None] = mapped_column(sa.Numeric(20, 2))
     amount_max: Mapped[Decimal | None] = mapped_column(sa.Numeric(20, 2))
@@ -263,6 +263,11 @@ class JobStatusEvent(V1Base):
             name="fk_job_status_events__observation_job__job_observations",
             ondelete="RESTRICT",
         ),
+        sa.Index(
+            "ix_job_status_events__observation_id",
+            "observation_id",
+            postgresql_where=sa.text("observation_id IS NOT NULL"),
+        ),
         {"schema": "history"},
     )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)
@@ -306,6 +311,8 @@ class JobChangeEvent(V1Base):
             name="fk_job_change_events__to_observation_job__job_observations",
             ondelete="RESTRICT",
         ),
+        sa.Index("ix_job_change_events__to_observation_id", "to_observation_id"),
+        sa.Index("ix_job_change_events__field_path", "field_path"),
         {"schema": "history"},
     )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)
@@ -345,6 +352,7 @@ class JobRepostEvent(V1Base):
             name="fk_job_repost_events__new_observation_job__job_observations",
             ondelete="RESTRICT",
         ),
+        sa.Index("ix_job_repost_events__new_observation_id", "new_observation_id"),
         {"schema": "history"},
     )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)

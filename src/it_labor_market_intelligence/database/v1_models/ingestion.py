@@ -108,7 +108,10 @@ class ParserVersion(V1Base):
 
 class CrawlRun(V1Base):
     __tablename__ = "crawl_runs"
-    __table_args__ = {"schema": "ingestion"}
+    __table_args__ = (
+        sa.UniqueConstraint("id", "source_id", name="uq_crawl_runs__id_source_id"),
+        {"schema": "ingestion"},
+    )
     id: Mapped[UUID] = mapped_column(
         uuid_pk(), primary_key=True, server_default=sa.text("gen_random_uuid()")
     )
@@ -284,6 +287,7 @@ class ExtractedRecord(V1Base):
             "source_job_id",
             name="uq_extracted_records__id_source_identity",
         ),
+        sa.UniqueConstraint("id", "source_id", name="uq_extracted_records__id_source_id"),
         {"schema": "ingestion"},
     )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)

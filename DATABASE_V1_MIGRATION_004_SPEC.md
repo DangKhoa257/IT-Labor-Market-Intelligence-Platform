@@ -120,6 +120,7 @@ Add:
 
 ```text
 UNIQUE (id, source_id, source_job_id)
+UNIQUE (id, source_id)
 ```
 
 Name:
@@ -158,6 +159,13 @@ ingestion.extracted_records (id, source_id, source_job_id)
 
 must remain unchanged.
 
+Add supporting uniqueness for composite lineage foreign keys:
+
+```text
+ingestion.crawl_runs (id, source_id)
+ingestion.extracted_records (id, source_id)
+```
+
 ---
 
 ## 6. Append-only enforcement
@@ -174,7 +182,6 @@ Attach to:
 
 ```text
 history.job_observations
-history.observation_descriptions
 history.observation_locations
 history.observation_salaries
 history.observation_skills
@@ -182,11 +189,12 @@ history.observation_occupations
 history.job_status_events
 history.job_change_events
 history.job_repost_events
-quality.field_evidence
 quality.duplicate_candidates
 ```
 
-Do not attach to validation runs, quality issues, clusters, or cluster members.
+Use specialized retention/review triggers for `history.observation_descriptions` and
+`quality.field_evidence`. Do not attach the generic trigger to validation runs, quality issues,
+clusters, or cluster members.
 
 ---
 
@@ -273,7 +281,7 @@ ON DELETE RESTRICT
 → ingestion.extracted_records(id, source_id, source_job_id)
 ON DELETE RESTRICT
 
-crawl_run_id → ingestion.crawl_runs(id) ON DELETE SET NULL
+crawl_run_id → ingestion.crawl_runs(id) ON DELETE RESTRICT
 (previous_observation_id, job_posting_id)
 → history.job_observations(id, job_posting_id) ON DELETE RESTRICT
 company_id → core.companies(id) ON DELETE RESTRICT
@@ -286,6 +294,7 @@ Constraints:
 ```text
 PRIMARY KEY (id)
 UNIQUE (id, job_posting_id)
+UNIQUE (id, job_posting_id, source_id)
 UNIQUE (id, extracted_record_id)
 UNIQUE (job_posting_id, extracted_record_id, normalization_version)
 
@@ -367,7 +376,10 @@ Indexes:
 (retained_until) WHERE retained_until IS NOT NULL
 ```
 
-Attach append-only trigger.
+Attach a specialized trigger. It always rejects deletion and changes to identity, format,
+language, content hash, retention date, or creation time. The only permitted update changes
+`description_text` from non-null to null while changing `redaction_status` to `redacted` or
+`expired`. Text cannot be restored, and a redacted/expired row cannot return to another state.
 
 ---
 
@@ -422,7 +434,6 @@ Use the same salary semantics as `core.salary_offers`.
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | No | identity |
 | `observation_id` | `BIGINT` | No | — |
 | `offer_index` | `SMALLINT` | No | `0` |
-| `source_salary_offer_id` | `BIGINT` | Yes | — |
 | `raw_text` | `TEXT` | Yes | — |
 | `amount_min` | `NUMERIC(20,2)` | Yes | — |
 | `amount_max` | `NUMERIC(20,2)` | Yes | — |
@@ -448,8 +459,10 @@ Foreign keys:
 
 ```text
 observation_id → history.job_observations(id) ON DELETE RESTRICT
-source_salary_offer_id → core.salary_offers(id) ON DELETE SET NULL
 ```
+
+The historical salary snapshot is self-contained. It has no foreign key to a mutable current
+`core.salary_offers` row.
 
 Rules:
 
@@ -581,6 +594,12 @@ evidence_json is an object
 confidence null or between 0 and 1
 ```
 
+Critical index:
+
+```text
+(observation_id) WHERE observation_id IS NOT NULL
+```
+
 Attach append-only trigger.
 
 ---
@@ -621,6 +640,13 @@ UNIQUE (from_observation_id, to_observation_id, field_path, change_type)
 from_observation_id != to_observation_id
 field_path not blank
 old_value_json IS DISTINCT FROM new_value_json
+```
+
+Critical indexes:
+
+```text
+(to_observation_id)
+(field_path)
 ```
 
 Attach append-only trigger.
@@ -665,6 +691,12 @@ previous_observation_id != new_observation_id
 method names not blank
 confidence null or between 0 and 1
 evidence_json is an object
+```
+
+Critical index:
+
+```text
+(new_observation_id)
 ```
 
 Attach append-only trigger.
@@ -720,6 +752,7 @@ Rules:
 
 ```text
 foreign keys to source/crawl run/pipeline version use ON DELETE SET NULL
+(crawl_run_id, source_id) must match ingestion.crawl_runs(id, source_id) when both are present
 ruleset_version not blank
 JSONB fields are objects
 counters nonnegative
@@ -783,10 +816,15 @@ Foreign keys:
 
 ```text
 validation_run_id → quality.validation_runs(id) ON DELETE RESTRICT
-source/crawl/extracted record use ON DELETE SET NULL
+source/crawl/extracted record use ON DELETE RESTRICT
 job_posting_id → core.job_postings(id) ON DELETE RESTRICT
 (observation_id, job_posting_id)
 → history.job_observations(id, job_posting_id) ON DELETE RESTRICT
+(crawl_run_id, source_id) → ingestion.crawl_runs(id, source_id)
+(extracted_record_id, source_id) → ingestion.extracted_records(id, source_id)
+(job_posting_id, source_id) → core.job_postings(id, source_id)
+(observation_id, job_posting_id, source_id)
+→ history.job_observations(id, job_posting_id, source_id) ON DELETE RESTRICT
 ```
 
 Rules:
@@ -796,11 +834,20 @@ UNIQUE (validation_run_id, fingerprint)
 fingerprint is lowercase SHA-256
 issue_code/message/rule_version not blank
 evidence_json is an object
-at least one context: crawl run, extracted record, job, or observation
+at least one context: source, crawl run, extracted record, job, or observation
 observation requires job_posting_id
 reviewed_at requires reviewed_by
 resolved/false_positive/suppressed require resolved_at
 open/acknowledged require resolved_at IS NULL
+```
+
+Critical indexes:
+
+```text
+(source_id, detected_at DESC)
+(job_posting_id)
+(observation_id)
+(issue_code)
 ```
 
 ---
@@ -825,6 +872,9 @@ open/acknowledged require resolved_at IS NULL
 | `inference_method` | `VARCHAR(150)` | Yes | — |
 | `confidence` | `NUMERIC(5,4)` | Yes | — |
 | `review_status` | `VARCHAR(30)` | No | `'unreviewed'` |
+| `reviewed_by` | `VARCHAR(255)` | Yes | — |
+| `reviewed_at` | `TIMESTAMPTZ` | Yes | — |
+| `review_notes` | `TEXT` | Yes | — |
 | `created_at` | `TIMESTAMPTZ` | No | `now()` |
 
 Classification:
@@ -860,9 +910,13 @@ not_available requires raw and normalized values null
 other classes require at least one evidence element
 inferred requires inference_method
 normalized requires normalization_rule and normalization_version
+verified/rejected requires reviewed_by and reviewed_at
+verified/rejected cannot return to unreviewed
 ```
 
-Attach append-only trigger.
+Attach a specialized trigger that always rejects deletion, keeps all content and lineage columns
+immutable, and permits updates only to `review_status`, `reviewed_by`, `reviewed_at`, and
+`review_notes` under the review rules above.
 
 ---
 
@@ -950,6 +1004,12 @@ Rules:
 ```text
 method_version not blank
 score null or between 0 and 1
+```
+
+Critical index:
+
+```text
+(review_status, created_at DESC)
 ```
 
 ---
@@ -1058,14 +1118,14 @@ Do not add generic update/delete repositories for append-only models.
 # 11. Upgrade order
 
 1. Create schemas and revoke public access.
-2. Add core composite identity constraint.
-3. Create append-only trigger function.
+2. Add supporting source-identity constraints.
+3. Create generic append-only and specialized retention/review trigger functions.
 4. Create `history.job_observations`.
 5. Add `current_observation_id`, FK, and index.
 6. Create history child tables.
 7. Create history event tables.
 8. Create quality tables.
-9. Attach append-only triggers.
+9. Attach generic append-only and specialized retention/review triggers.
 10. Create remaining indexes.
 
 ---
@@ -1077,8 +1137,8 @@ Do not add generic update/delete repositories for append-only models.
 3. Drop history child tables.
 4. Drop current-observation FK/index/column.
 5. Drop `history.job_observations`.
-6. Drop append-only function.
-7. Drop core composite identity constraint.
+6. Drop generic and specialized trigger functions.
+7. Drop Migration 004 supporting identity constraints.
 8. Drop `quality` schema.
 9. Drop `history` schema.
 
@@ -1117,11 +1177,13 @@ Required tests:
 ### Append-only
 
 - update and delete observation rejected;
-- update/delete child snapshot rejected;
+- update/delete immutable child snapshot rejected;
 - update/delete event rejected;
-- update/delete field evidence rejected;
+- description deletion and non-retention updates rejected;
+- field-evidence content update and deletion rejected;
 - update/delete duplicate candidate rejected;
-- verify every required append-only table has its trigger.
+- verify every required generic and specialized table has its trigger;
+- no `ON DELETE SET NULL` action targets an append-only history table.
 
 ### Historical children
 
@@ -1130,9 +1192,10 @@ Required tests:
 - remote consistency both ways;
 - month/year salary remain separate;
 - salary NULL/FX/disclosure rules;
+- deleting a current salary does not change or block its self-contained historical snapshot;
 - required/preferred same skill allowed;
 - one primary occupation;
-- description redaction/hash semantics.
+- description redaction/hash semantics and one-way text removal.
 
 ### Events
 
@@ -1145,10 +1208,14 @@ Required tests:
 ### Quality
 
 - validation lifecycle and counters;
+- validation-run source/crawl identity consistency;
+- valid source-only issue;
+- mismatched source/crawl, source/extracted-record, source/job, or observation lineage rejected;
+- deleting referenced issue context is rejected;
 - issue requires context;
 - issue fingerprint uniqueness per run;
 - resolution/review state consistency;
-- field-evidence class requirements;
+- field-evidence class and review-workflow requirements;
 - canonical duplicate pair ordering;
 - one cluster representative;
 - cluster deletion never deletes jobs.

@@ -17,7 +17,14 @@ from .base import V1Base
 
 class ValidationRun(V1Base):
     __tablename__ = "validation_runs"
-    __table_args__ = {"schema": "quality"}
+    __table_args__ = (
+        sa.ForeignKeyConstraint(
+            ("crawl_run_id", "source_id"),
+            ("ingestion.crawl_runs.id", "ingestion.crawl_runs.source_id"),
+            name="fk_validation_runs__crawl_source_identity__crawl_runs",
+        ),
+        {"schema": "quality"},
+    )
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")
     )
@@ -62,6 +69,35 @@ class DataQualityIssue(V1Base):
             name="fk_data_quality_issues__observation_job__job_observations",
             ondelete="RESTRICT",
         ),
+        sa.ForeignKeyConstraint(
+            ("crawl_run_id", "source_id"),
+            ("ingestion.crawl_runs.id", "ingestion.crawl_runs.source_id"),
+            name="fk_data_quality_issues__crawl_source_identity__crawl_runs",
+        ),
+        sa.ForeignKeyConstraint(
+            ("extracted_record_id", "source_id"),
+            ("ingestion.extracted_records.id", "ingestion.extracted_records.source_id"),
+            name="fk_data_quality_issues__extracted_source__extracted_records",
+        ),
+        sa.ForeignKeyConstraint(
+            ("job_posting_id", "source_id"),
+            ("core.job_postings.id", "core.job_postings.source_id"),
+            name="fk_data_quality_issues__job_source_identity__job_postings",
+        ),
+        sa.ForeignKeyConstraint(
+            ("observation_id", "job_posting_id", "source_id"),
+            (
+                "history.job_observations.id",
+                "history.job_observations.job_posting_id",
+                "history.job_observations.source_id",
+            ),
+            name="fk_data_quality_issues__observation_source__job_observations",
+            ondelete="RESTRICT",
+        ),
+        sa.Index("ix_data_quality_issues__source_detected_at", "source_id", sa.desc("detected_at")),
+        sa.Index("ix_data_quality_issues__job_posting_id", "job_posting_id"),
+        sa.Index("ix_data_quality_issues__observation_id", "observation_id"),
+        sa.Index("ix_data_quality_issues__issue_code", "issue_code"),
         {"schema": "quality"},
     )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)
@@ -69,13 +105,13 @@ class DataQualityIssue(V1Base):
         PGUUID(as_uuid=True), sa.ForeignKey("quality.validation_runs.id", ondelete="RESTRICT")
     )
     source_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.sources.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.sources.id", ondelete="RESTRICT")
     )
     crawl_run_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.crawl_runs.id", ondelete="SET NULL")
+        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.crawl_runs.id", ondelete="RESTRICT")
     )
     extracted_record_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger, sa.ForeignKey("ingestion.extracted_records.id", ondelete="SET NULL")
+        sa.BigInteger, sa.ForeignKey("ingestion.extracted_records.id", ondelete="RESTRICT")
     )
     job_posting_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), sa.ForeignKey("core.job_postings.id", ondelete="RESTRICT")
@@ -135,6 +171,9 @@ class FieldEvidence(V1Base):
     inference_method: Mapped[str | None] = mapped_column(sa.String(150))
     confidence: Mapped[Decimal | None] = mapped_column(sa.Numeric(5, 4))
     review_status: Mapped[str] = mapped_column(sa.String(30), server_default="unreviewed")
+    reviewed_by: Mapped[str | None] = mapped_column(sa.String(255))
+    reviewed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    review_notes: Mapped[str | None] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.text("now()")
     )
@@ -171,7 +210,14 @@ class DuplicateCandidate(V1Base):
 
 class DuplicateCluster(V1Base):
     __tablename__ = "duplicate_clusters"
-    __table_args__ = {"schema": "quality"}
+    __table_args__ = (
+        sa.Index(
+            "ix_duplicate_clusters__review_status_created_at",
+            "review_status",
+            sa.desc("created_at"),
+        ),
+        {"schema": "quality"},
+    )
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")
     )

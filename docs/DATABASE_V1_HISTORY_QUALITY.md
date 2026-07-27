@@ -23,6 +23,11 @@ It creates exactly these tables:
 `(source_id, source_job_id)` identity. An unchanged successful recrawl updates
 `core.job_postings.last_seen_at` without requiring another observation.
 
+Observation crawl lineage is restrictive: a referenced crawl run cannot be deleted. Historical
+salary snapshots are self-contained and intentionally have no foreign key to mutable current
+`core.salary_offers` rows, so replacing or deleting current salary state cannot rewrite or block
+the historical snapshot.
+
 Observations are versioned by extracted record and normalization version, not by canonical hash.
 Therefore a posting may move from hash A to B and later back to A while retaining distinct,
 ordered lineage. Description, location, salary, skill, and occupation tables store complete child
@@ -41,12 +46,14 @@ lifecycle transitions, schedule checks, or write these rows.
 
 ## Append-only records
 
-PostgreSQL triggers reject updates and deletes for all observations, historical child snapshots,
-history events, field evidence, and duplicate candidates with SQLSTATE `23514`. Validation runs,
-quality issues, duplicate clusters, and cluster membership remain mutable for operational and
-review workflows.
+PostgreSQL triggers reject updates and deletes for observations, immutable historical child
+snapshots, history events, and duplicate candidates with SQLSTATE `23514`. A specialized
+description trigger permits only one retention action: remove non-null text while moving to
+`redacted` or `expired`; it rejects deletion, restoration, and all other changes.
 
-Field evidence classifications are `direct_structured`, `direct_html`,
+Field evidence content and lineage remain immutable, but a specialized trigger permits updates to
+its review status, reviewer, review time, and notes. Verified/rejected evidence requires reviewer
+identity and time and cannot return to `unreviewed`. Field evidence classifications are `direct_structured`, `direct_html`,
 `description_derived`, `normalized`, `inferred`, `not_available`, and `unverified`. Normalized
 evidence requires its rule and version; inferred evidence requires its method; unavailable fields
 must not claim raw or normalized values.
@@ -56,6 +63,10 @@ must not claim raw or normalized values.
 Validation runs track scope, rule version, lifecycle, counters, and object-shaped metrics. Quality
 issues move through `open`, `acknowledged`, `resolved`, `false_positive`, or `suppressed`; resolved
 states require a resolution timestamp, and review timestamps require a reviewer.
+
+Source-only issues are valid. When additional context is stated, composite PostgreSQL foreign keys
+prove crawl runs, extracted records, jobs, and observations belong to the stated source/job.
+Quality-issue context uses restrictive deletion, so evidence lineage cannot silently disappear.
 
 Duplicate candidates and clusters are advisory. Canonical candidate pairs have a stable UUID
 ordering, and a cluster has at most one representative. Removing a cluster deletes only its

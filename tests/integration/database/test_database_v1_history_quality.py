@@ -41,7 +41,6 @@ QUALITY_TABLES = {
 }
 APPEND_ONLY_TABLES = {
     "job_observations",
-    "observation_descriptions",
     "observation_locations",
     "observation_salaries",
     "observation_skills",
@@ -49,7 +48,6 @@ APPEND_ONLY_TABLES = {
     "job_status_events",
     "job_change_events",
     "job_repost_events",
-    "field_evidence",
     "duplicate_candidates",
 }
 
@@ -183,14 +181,16 @@ def _observation(
     canonical_hash: str,
     normalization_version: str,
     previous_id: int | None = None,
+    crawl_run_id: UUID | None = None,
 ) -> int:
     return _integer(
         connection,
         """INSERT INTO history.job_observations
                (job_posting_id, source_id, source_job_id, extracted_record_id,
-                previous_observation_id, observation_reason, observed_at, canonical_hash,
+                crawl_run_id, previous_observation_id, observation_reason, observed_at,
+                canonical_hash,
                 status, source_url, title_raw, canonical_payload_json, normalization_version)
-           VALUES (:job, :source, :source_job_id, :record, :previous, 'content_changed',
+           VALUES (:job, :source, :source_job_id, :record, :crawl_run, :previous, 'content_changed',
                    now(), :hash, 'active', :url, 'EXAMPLE_NOT_REAL_DATA Engineer',
                    '{}'::jsonb, :normalization) RETURNING id""",
         {
@@ -198,6 +198,7 @@ def _observation(
             "source": source_id,
             "source_job_id": source_job_id,
             "record": record_id,
+            "crawl_run": crawl_run_id,
             "previous": previous_id,
             "hash": canonical_hash,
             "url": f"https://example.test/jobs/{source_job_id}",
@@ -215,6 +216,13 @@ def catalog(engine: sa.Engine) -> dict[str, UUID | int]:
         parser_b = _parser(connection, source_b, "history-parser-b")
         job_a = _job(connection, source_a, "history-job-a")
         job_b = _job(connection, source_a, "history-job-b")
+        source_context = _source(connection, "history-source-context")
+        lineage_crawl_run = _uuid(
+            connection,
+            """INSERT INTO ingestion.crawl_runs (source_id, run_type, trigger_type)
+               VALUES (:source, 'test', 'test') RETURNING id""",
+            {"source": source_a},
+        )
         records = {
             "record_a1": _record(connection, source_a, parser_a, "history-job-a", "a1"),
             "record_a2": _record(connection, source_a, parser_a, "history-job-a", "b2"),
@@ -230,6 +238,7 @@ def catalog(engine: sa.Engine) -> dict[str, UUID | int]:
             record_id=records["record_a1"],
             canonical_hash="a" * 64,
             normalization_version="history.v1",
+            crawl_run_id=lineage_crawl_run,
         )
         observation_a2 = _observation(
             connection,
@@ -320,6 +329,8 @@ def catalog(engine: sa.Engine) -> dict[str, UUID | int]:
     return {
         "source_a": source_a,
         "source_b": source_b,
+        "source_context": source_context,
+        "lineage_crawl_run": lineage_crawl_run,
         "job_a": job_a,
         "job_b": job_b,
         "observation_a1": observation_a1,
@@ -339,10 +350,37 @@ def test_schema_inventory_and_head(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     assert set(inspector.get_table_names(schema="history")) == HISTORY_TABLES
     assert set(inspector.get_table_names(schema="quality")) == QUALITY_TABLES
+    salary_columns = {
+        column["name"] for column in inspector.get_columns("observation_salaries", schema="history")
+    }
+    assert "source_salary_offer_id" not in salary_columns
+    evidence_columns = {
+        column["name"] for column in inspector.get_columns("field_evidence", schema="quality")
+    }
+    assert {"reviewed_by", "reviewed_at", "review_notes"} <= evidence_columns
     with engine.connect() as connection:
         assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == (
             "20260727_0004"
         )
+        index_names = set(
+            connection.scalars(
+                sa.text(
+                    """SELECT indexname FROM pg_indexes
+                       WHERE schemaname IN ('history', 'quality')"""
+                )
+            )
+        )
+        assert {
+            "ix_job_status_events__observation_id",
+            "ix_job_change_events__to_observation_id",
+            "ix_job_change_events__field_path",
+            "ix_job_repost_events__new_observation_id",
+            "ix_data_quality_issues__source_detected_at",
+            "ix_data_quality_issues__job_posting_id",
+            "ix_data_quality_issues__observation_id",
+            "ix_data_quality_issues__issue_code",
+            "ix_duplicate_clusters__review_status_created_at",
+        } <= index_names
 
 
 def test_observation_identity_lineage_hashes_and_current_pointer(
@@ -469,9 +507,36 @@ def test_observation_identity_lineage_hashes_and_current_pointer(
             },
         )
 
+    _reject(
+        engine,
+        "DELETE FROM ingestion.crawl_runs WHERE id=:crawl_run",
+        {"crawl_run": catalog["lineage_crawl_run"]},
+    )
+    with engine.connect() as connection:
+        set_null_targets = connection.execute(
+            sa.text(
+                """SELECT child_namespace.nspname, child.relname, constraint_row.conname
+                   FROM pg_constraint AS constraint_row
+                   JOIN pg_class AS child ON child.oid = constraint_row.conrelid
+                   JOIN pg_namespace AS child_namespace
+                     ON child_namespace.oid = child.relnamespace
+                   WHERE constraint_row.contype = 'f'
+                     AND constraint_row.confdeltype = 'n'
+                     AND child_namespace.nspname = 'history'"""
+            )
+        ).all()
+        assert set_null_targets == []
+
 
 def test_historical_children_constraints(engine: sa.Engine, catalog: dict[str, UUID | int]) -> None:
     with engine.begin() as connection:
+        current_salary_id = _integer(
+            connection,
+            """INSERT INTO core.salary_offers
+                   (job_posting_id, amount_min, currency, period, is_disclosed)
+               VALUES (:job, 1000, 'USD', 'month', true) RETURNING id""",
+            {"job": catalog["job_a"]},
+        )
         description_id = _integer(
             connection,
             """INSERT INTO history.observation_locations
@@ -542,6 +607,29 @@ def test_historical_children_constraints(engine: sa.Engine, catalog: dict[str, U
         )
         assert {description_id, remote_location_id, occupation_row_id}
 
+    with engine.begin() as connection:
+        snapshot_count = connection.scalar(
+            sa.text(
+                "SELECT count(*) FROM history.observation_salaries "
+                "WHERE observation_id=:observation"
+            ),
+            {"observation": catalog["observation_a1"]},
+        )
+        connection.execute(
+            sa.text("DELETE FROM core.salary_offers WHERE id=:salary"),
+            {"salary": current_salary_id},
+        )
+        assert (
+            connection.scalar(
+                sa.text(
+                    "SELECT count(*) FROM history.observation_salaries "
+                    "WHERE observation_id=:observation"
+                ),
+                {"observation": catalog["observation_a1"]},
+            )
+            == snapshot_count
+        )
+
     _reject(
         engine,
         """INSERT INTO history.observation_locations
@@ -606,6 +694,63 @@ def test_historical_children_constraints(engine: sa.Engine, catalog: dict[str, U
             ),
             {"observation": catalog["observation_a2"], "hash": "c" * 64},
         )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_descriptions
+                       (observation_id, description_text, content_hash)
+                   VALUES (:observation, 'EXAMPLE_NOT_REAL_DATA retained text', :hash)"""
+            ),
+            {"observation": catalog["observation_a3"], "hash": "d" * 64},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE history.observation_descriptions
+                   SET description_text=NULL, redaction_status='redacted'
+                   WHERE observation_id=:observation"""
+            ),
+            {"observation": catalog["observation_a1"]},
+        )
+        assert (
+            connection.execute(
+                sa.text(
+                    """SELECT description_text, redaction_status
+                   FROM history.observation_descriptions
+                   WHERE observation_id=:observation"""
+                ),
+                {"observation": catalog["observation_a1"]},
+            ).one()
+            == (None, "redacted")
+        )
+
+    for statement, observation in (
+        (
+            """UPDATE history.observation_descriptions
+               SET description_text='restored', redaction_status='not_required'
+               WHERE observation_id=:observation""",
+            catalog["observation_a1"],
+        ),
+        (
+            """UPDATE history.observation_descriptions SET redaction_status='expired'
+               WHERE observation_id=:observation""",
+            catalog["observation_a1"],
+        ),
+        (
+            """UPDATE history.observation_descriptions
+               SET description_text=NULL, redaction_status='pending'
+               WHERE observation_id=:observation""",
+            catalog["observation_a3"],
+        ),
+        (
+            """UPDATE history.observation_descriptions SET description_format='html'
+               WHERE observation_id=:observation""",
+            catalog["observation_a3"],
+        ),
+        (
+            "DELETE FROM history.observation_descriptions WHERE observation_id=:observation",
+            catalog["observation_a1"],
+        ),
+    ):
+        _reject(engine, statement, {"observation": observation})
 
 
 def test_events_and_same_job_constraints(engine: sa.Engine, catalog: dict[str, UUID | int]) -> None:
@@ -704,12 +849,13 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
         issue_id = _integer(
             connection,
             """INSERT INTO quality.data_quality_issues
-                   (validation_run_id, job_posting_id, observation_id, issue_code,
+                   (validation_run_id, source_id, job_posting_id, observation_id, issue_code,
                     fingerprint, message, rule_version)
-               VALUES (:run, :job, :observation, 'EXAMPLE_FIELD_WARNING', :fingerprint,
+               VALUES (:run, :source, :job, :observation, 'EXAMPLE_FIELD_WARNING', :fingerprint,
                        'EXAMPLE_NOT_REAL_DATA quality issue', 'quality.v1') RETURNING id""",
             {
                 "run": validation_run_id,
+                "source": catalog["source_a"],
                 "job": catalog["job_a"],
                 "observation": catalog["observation_a1"],
                 "fingerprint": "1" * 64,
@@ -725,6 +871,52 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
             ),
             {"issue": issue_id},
         )
+        source_only_issue_id = _integer(
+            connection,
+            """INSERT INTO quality.data_quality_issues
+                   (validation_run_id, source_id, issue_code, fingerprint, message, rule_version)
+               VALUES (:run, :source, 'SOURCE_ONLY', :fingerprint,
+                       'EXAMPLE_NOT_REAL_DATA source issue', 'quality.v1') RETURNING id""",
+            {
+                "run": validation_run_id,
+                "source": catalog["source_context"],
+                "fingerprint": "4" * 64,
+            },
+        )
+        extracted_issue_id = _integer(
+            connection,
+            """INSERT INTO quality.data_quality_issues
+                   (validation_run_id, source_id, extracted_record_id, issue_code,
+                    fingerprint, message, rule_version)
+               VALUES (:run, :source, :record, 'EXTRACTED_CONTEXT', :fingerprint,
+                       'EXAMPLE_NOT_REAL_DATA extracted issue', 'quality.v1') RETURNING id""",
+            {
+                "run": validation_run_id,
+                "source": catalog["source_b"],
+                "record": catalog["record_wrong_source"],
+                "fingerprint": "5" * 64,
+            },
+        )
+        context_crawl_run = _uuid(
+            connection,
+            """INSERT INTO ingestion.crawl_runs (source_id, run_type, trigger_type)
+               VALUES (:source, 'test', 'test') RETURNING id""",
+            {"source": catalog["source_a"]},
+        )
+        crawl_issue_id = _integer(
+            connection,
+            """INSERT INTO quality.data_quality_issues
+                   (validation_run_id, source_id, crawl_run_id, issue_code,
+                    fingerprint, message, rule_version)
+               VALUES (:run, :source, :crawl_run, 'CRAWL_CONTEXT', :fingerprint,
+                       'EXAMPLE_NOT_REAL_DATA crawl issue', 'quality.v1') RETURNING id""",
+            {
+                "run": validation_run_id,
+                "source": catalog["source_a"],
+                "crawl_run": context_crawl_run,
+                "fingerprint": "6" * 64,
+            },
+        )
         field_evidence_id = _integer(
             connection,
             """INSERT INTO quality.field_evidence
@@ -734,6 +926,24 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
                        '"Example Engineer"'::jsonb, 'trim_casefold', 'quality.v1')
                RETURNING id""",
             {"observation": catalog["observation_a1"]},
+        )
+        review_candidate_id = _integer(
+            connection,
+            """INSERT INTO quality.field_evidence
+                   (observation_id, field_path, classification, evidence_path)
+               VALUES (:observation, 'title_raw', 'direct_html', '/html/title')
+               RETURNING id""",
+            {"observation": catalog["observation_a2"]},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE quality.field_evidence
+                   SET review_status='verified',
+                       reviewed_by='EXAMPLE_NOT_REAL_DATA reviewer', reviewed_at=now(),
+                       review_notes='EXAMPLE_NOT_REAL_DATA verified'
+                   WHERE id=:evidence"""
+            ),
+            {"evidence": field_evidence_id},
         )
         left_job, right_job = sorted((cast(UUID, catalog["job_a"]), cast(UUID, catalog["job_b"])))
         duplicate_candidate_id = _integer(
@@ -759,6 +969,7 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
             ),
             {"cluster": cluster_id, "job": catalog["job_a"]},
         )
+        assert {source_only_issue_id, extracted_issue_id, crawl_issue_id}
     for statement in (
         """INSERT INTO quality.validation_runs
                (scope_type, ruleset_version, status, issues_found_count, critical_issue_count)
@@ -768,6 +979,13 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
            VALUES ('batch', 'quality.v1', 'succeeded')""",
     ):
         _reject(engine, statement, {})
+    _reject(
+        engine,
+        """INSERT INTO quality.validation_runs
+               (source_id, crawl_run_id, scope_type, ruleset_version)
+           VALUES (:source, :crawl_run, 'crawl_run', 'quality.v1')""",
+        {"source": catalog["source_b"], "crawl_run": catalog["lineage_crawl_run"]},
+    )
     _reject(
         engine,
         """INSERT INTO quality.data_quality_issues
@@ -785,6 +1003,59 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
             "run": validation_run_id,
             "job": catalog["job_a"],
             "fingerprint": "1" * 64,
+        },
+    )
+    for issue_code, source_id, context_column, context_value, fingerprint in (
+        (
+            "MISMATCH_CRAWL",
+            catalog["source_b"],
+            "crawl_run_id",
+            catalog["lineage_crawl_run"],
+            "7" * 64,
+        ),
+        (
+            "MISMATCH_EXTRACTED",
+            catalog["source_a"],
+            "extracted_record_id",
+            catalog["record_wrong_source"],
+            "8" * 64,
+        ),
+        (
+            "MISMATCH_JOB",
+            catalog["source_b"],
+            "job_posting_id",
+            catalog["job_a"],
+            "9" * 64,
+        ),
+    ):
+        _reject(
+            engine,
+            f"""INSERT INTO quality.data_quality_issues
+                    (validation_run_id, source_id, {context_column}, issue_code,
+                     fingerprint, message, rule_version)
+                VALUES (:run, :source, :context, :issue_code, :fingerprint,
+                        'EXAMPLE_NOT_REAL_DATA mismatch', 'quality.v1')""",
+            {
+                "run": validation_run_id,
+                "source": source_id,
+                "context": context_value,
+                "issue_code": issue_code,
+                "fingerprint": fingerprint,
+            },
+        )
+    _reject(
+        engine,
+        """INSERT INTO quality.data_quality_issues
+               (validation_run_id, source_id, job_posting_id, observation_id,
+                issue_code, fingerprint, message, rule_version)
+           VALUES (:run, :source, :job, :observation, 'MISMATCH_OBSERVATION',
+                   :fingerprint, 'EXAMPLE_NOT_REAL_DATA mismatch', 'quality.v1')""",
+        {
+            "run": validation_run_id,
+            "source": catalog["source_b"],
+            "job": catalog["job_a"],
+            "observation": catalog["observation_a1"],
+            "fingerprint": "0" * 64,
         },
     )
     _reject(
@@ -817,6 +1088,45 @@ def test_quality_lifecycle_evidence_and_advisory_duplicates(
                 "classification": classification,
             },
         )
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                sa.text(
+                    """SELECT review_status, reviewed_by, reviewed_at, review_notes
+                   FROM quality.field_evidence WHERE id=:evidence"""
+                ),
+                {"evidence": field_evidence_id},
+            ).one()[0:2]
+            == ("verified", "EXAMPLE_NOT_REAL_DATA reviewer")
+        )
+    _reject(
+        engine,
+        """UPDATE quality.field_evidence SET normalized_value_json='"changed"'::jsonb
+           WHERE id=:evidence""",
+        {"evidence": field_evidence_id},
+    )
+    _reject(
+        engine,
+        "UPDATE quality.field_evidence SET review_status='unreviewed' WHERE id=:evidence",
+        {"evidence": field_evidence_id},
+    )
+    _reject(
+        engine,
+        """UPDATE quality.field_evidence SET review_status='rejected'
+           WHERE id=:evidence""",
+        {"evidence": review_candidate_id},
+    )
+    _reject(
+        engine,
+        "DELETE FROM quality.field_evidence WHERE id=:evidence",
+        {"evidence": field_evidence_id},
+    )
+    for table, identifier in (
+        ("ingestion.sources", catalog["source_context"]),
+        ("ingestion.extracted_records", catalog["record_wrong_source"]),
+        ("ingestion.crawl_runs", context_crawl_run),
+    ):
+        _reject(engine, f"DELETE FROM {table} WHERE id=:identifier", {"identifier": identifier})
     left_job, right_job = sorted((cast(UUID, catalog["job_a"]), cast(UUID, catalog["job_b"])))
     _reject(
         engine,
@@ -878,7 +1188,22 @@ def test_append_only_enforcement_and_trigger_inventory(
                      AND trigger_name LIKE 'trg_%__append_only'"""
             )
         ).all()
+        specialized_triggers = set(
+            connection.scalars(
+                sa.text(
+                    """SELECT DISTINCT trigger_name FROM information_schema.triggers
+                       WHERE trigger_schema IN ('history', 'quality')
+                         AND trigger_name IN
+                           ('trg_observation_descriptions__retention',
+                            'trg_field_evidence__review')"""
+                )
+            )
+        )
     assert {row[0] for row in rows} == APPEND_ONLY_TABLES
+    assert specialized_triggers == {
+        "trg_observation_descriptions__retention",
+        "trg_field_evidence__review",
+    }
 
     mutations = (
         (
@@ -898,12 +1223,6 @@ def test_append_only_enforcement_and_trigger_inventory(
             "observation_id",
             catalog["observation_a1"],
             "rule_version='changed'",
-        ),
-        (
-            "quality.field_evidence",
-            "observation_id",
-            catalog["observation_a1"],
-            "review_status='verified'",
         ),
     )
     for table, key, value, assignment in mutations:

@@ -143,6 +143,7 @@ class CoreJobPosting(V1Base):
         sa.UniqueConstraint(
             "id", "source_id", "source_job_id", name="uq_job_postings__id_source_identity"
         ),
+        sa.UniqueConstraint("id", "source_id", name="uq_job_postings__id_source_id"),
         sa.ForeignKeyConstraint(
             ("latest_extracted_record_id", "source_id", "source_job_id"),
             (
