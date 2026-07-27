@@ -156,6 +156,8 @@ Checks:
 - terminal status requires start and finish timestamps;
 - `running` status requires `started_at`;
 - finish is not earlier than start.
+- pending runs require both lifecycle timestamps NULL; running requires only `started_at`; terminal
+  statuses require both timestamps non-NULL.
 
 Indexes:
 
@@ -321,6 +323,11 @@ PostgreSQL validation triggers require every normal occupation/skill dimension r
 operational entity's taxonomy-version ID, version string, and parent. The unknown occupation `-1`
 row remains exempt because it deliberately has no operational identity.
 
+Once assigned, each dimension surrogate and operational identity is immutable. Source, company,
+location, occupation, and skill identity triggers reject reassignment with SQLSTATE `23514`; only
+descriptive Type 1 attributes may change. Unknown location and occupation `-1` members can never be
+converted into operational entities.
+
 ---
 
 # 6. Observation facts
@@ -381,7 +388,13 @@ Fact rows are append-only from the application perspective.
 
 PostgreSQL validates every copied job-fact field against `history.job_observations`, including
 NULL-safe company identity and UTC-derived date keys. The source key must resolve to the historical
-source. UPDATE and DELETE are rejected with SQLSTATE `23514`.
+source. Derived metrics are exact: salary disclosure means at least one disclosed historical
+salary; skill, occupation, and location counts count their corresponding historical child rows;
+first observations have both change flags false, while later flags compare status and canonical
+hash with the previous observation. UPDATE and DELETE are rejected with SQLSTATE `23514`.
+
+When a refresh run is source-scoped, its source must match the fact's source. Global runs with
+NULL source may process multiple sources.
 
 ---
 
@@ -424,7 +437,8 @@ Unknown/undisclosed values remain null.
 
 PostgreSQL validates that the salary belongs to the stated observation and job fact, that source,
 company, and observed date match the job fact, and that every copied salary value matches the
-historical salary. UPDATE and DELETE are rejected with SQLSTATE `23514`.
+historical salary. A source-scoped refresh must match the fact source. UPDATE and DELETE are
+rejected with SQLSTATE `23514`.
 
 ---
 
@@ -451,6 +465,7 @@ PRIMARY KEY (job_observation_fact_id, observation_location_id)
 Use FKs to fact, history location, dimension, and refresh run. Enforce remote consistency.
 PostgreSQL also proves that the historical child belongs to the fact's observation, the dimension
 resolves to the same operational location, and every copied relationship field matches history.
+Bridge refresh runs are either global or source-matched to the job fact.
 
 ## `analytics.bridge_job_observation_occupations`
 
@@ -469,7 +484,7 @@ PRIMARY KEY (job_observation_fact_id, observation_occupation_id)
 
 Partial unique index: one primary occupation per job fact.
 PostgreSQL validates observation ownership, operational dimension identity, and copied
-classification fields.
+classification fields. Bridge refresh runs are either global or source-matched to the job fact.
 
 ## `analytics.bridge_job_observation_skills`
 
@@ -506,6 +521,9 @@ refresh_run_id UUID NOT NULL FK analytics.refresh_runs RESTRICT
 calculation_version VARCHAR(100) NOT NULL
 calculated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 ```
+
+Every daily row's source dimension must match a source-scoped refresh (global refreshes are valid),
+and `calculation_version` must equal the referenced refresh run's calculation version.
 
 Rows are rebuildable and may be updated.
 

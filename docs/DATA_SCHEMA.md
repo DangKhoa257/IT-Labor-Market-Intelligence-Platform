@@ -98,6 +98,8 @@
 - PostgreSQL rejects cross-wired observation/salary/bridge lineage and makes facts and bridges
   append-only. Taxonomy dimension versions and parents must match their operational entities;
   calendar attributes are deterministic and immutable; daily salary ranges cannot be inverted.
+  Fact change flags/counts follow exact history-child definitions, and source-scoped refresh
+  source/version lineage cannot be reassigned after reference.
 
 ### JobPosting
 

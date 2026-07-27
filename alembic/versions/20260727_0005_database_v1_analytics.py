@@ -89,11 +89,11 @@ def upgrade() -> None:
             CONSTRAINT ck_refresh_runs__timestamps CHECK
                 (finished_at IS NULL OR
                     (started_at IS NOT NULL AND finished_at >= started_at)),
-            CONSTRAINT ck_refresh_runs__terminal_timestamps CHECK
-                (status NOT IN ('succeeded','partially_succeeded','failed','cancelled')
-                 OR (started_at IS NOT NULL AND finished_at IS NOT NULL)),
-            CONSTRAINT ck_refresh_runs__running_started CHECK
-                (status != 'running' OR started_at IS NOT NULL)
+            CONSTRAINT ck_refresh_runs__timestamp_lifecycle CHECK
+                ((status = 'pending' AND started_at IS NULL AND finished_at IS NULL)
+                 OR (status = 'running' AND started_at IS NOT NULL AND finished_at IS NULL)
+                 OR (status IN ('succeeded','partially_succeeded','failed','cancelled')
+                     AND started_at IS NOT NULL AND finished_at IS NOT NULL))
         )
         """
     )
@@ -454,6 +454,60 @@ def upgrade() -> None:
         FOR EACH ROW EXECUTE FUNCTION analytics.validate_skill_dimension_identity()
         """
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.prevent_dimension_identity_mutation()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF TG_TABLE_NAME = 'dim_sources'
+               AND (NEW.source_key IS DISTINCT FROM OLD.source_key
+                    OR NEW.source_id IS DISTINCT FROM OLD.source_id) THEN
+                RAISE EXCEPTION 'analytics.dim_sources identity is immutable'
+                    USING ERRCODE = '23514';
+            ELSIF TG_TABLE_NAME = 'dim_companies'
+               AND (NEW.company_key IS DISTINCT FROM OLD.company_key
+                    OR NEW.company_id IS DISTINCT FROM OLD.company_id) THEN
+                RAISE EXCEPTION 'analytics.dim_companies identity is immutable'
+                    USING ERRCODE = '23514';
+            ELSIF TG_TABLE_NAME = 'dim_locations'
+               AND (NEW.location_key IS DISTINCT FROM OLD.location_key
+                    OR NEW.location_id IS DISTINCT FROM OLD.location_id) THEN
+                RAISE EXCEPTION 'analytics.dim_locations identity is immutable'
+                    USING ERRCODE = '23514';
+            ELSIF TG_TABLE_NAME = 'dim_occupations'
+               AND (NEW.occupation_key IS DISTINCT FROM OLD.occupation_key
+                    OR NEW.occupation_id IS DISTINCT FROM OLD.occupation_id
+                    OR NEW.taxonomy_version_id IS DISTINCT FROM OLD.taxonomy_version_id) THEN
+                RAISE EXCEPTION 'analytics.dim_occupations identity is immutable'
+                    USING ERRCODE = '23514';
+            ELSIF TG_TABLE_NAME = 'dim_skills'
+               AND (NEW.skill_key IS DISTINCT FROM OLD.skill_key
+                    OR NEW.skill_id IS DISTINCT FROM OLD.skill_id
+                    OR NEW.taxonomy_version_id IS DISTINCT FROM OLD.taxonomy_version_id) THEN
+                RAISE EXCEPTION 'analytics.dim_skills identity is immutable'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    for table_name in (
+        "dim_sources",
+        "dim_companies",
+        "dim_locations",
+        "dim_occupations",
+        "dim_skills",
+    ):
+        op.execute(
+            f"""
+            CREATE TRIGGER trg_{table_name}__identity_immutable
+            BEFORE UPDATE ON analytics.{table_name}
+            FOR EACH ROW EXECUTE FUNCTION analytics.prevent_dimension_identity_mutation()
+            """
+        )
 
     op.execute(
         """
@@ -565,6 +619,12 @@ def upgrade() -> None:
                 JOIN analytics.dim_sources AS source
                   ON source.source_key = NEW.source_key
                  AND source.source_id = observation.source_id
+                JOIN analytics.refresh_runs AS refresh_run
+                  ON refresh_run.id = NEW.refresh_run_id
+                 AND (refresh_run.source_id IS NULL
+                      OR refresh_run.source_id = observation.source_id)
+                LEFT JOIN history.job_observations AS previous_observation
+                  ON previous_observation.id = observation.previous_observation_id
                 WHERE observation.id = NEW.observation_id
                   AND observation.job_posting_id = NEW.job_posting_id
                   AND (
@@ -601,6 +661,32 @@ def upgrade() -> None:
                       observation.experience_max_years
                   AND NEW.canonical_hash = observation.canonical_hash
                   AND NEW.normalization_version = observation.normalization_version
+                  AND NEW.salary_disclosed = EXISTS (
+                      SELECT 1 FROM history.observation_salaries AS salary
+                      WHERE salary.observation_id = observation.id
+                        AND salary.is_disclosed
+                  )
+                  AND NEW.skill_count = (
+                      SELECT count(*) FROM history.observation_skills AS skill
+                      WHERE skill.observation_id = observation.id
+                  )
+                  AND NEW.occupation_count = (
+                      SELECT count(*) FROM history.observation_occupations AS occupation
+                      WHERE occupation.observation_id = observation.id
+                  )
+                  AND NEW.location_count = (
+                      SELECT count(*) FROM history.observation_locations AS location
+                      WHERE location.observation_id = observation.id
+                  )
+                  AND NEW.is_status_change = CASE
+                      WHEN observation.previous_observation_id IS NULL THEN false
+                      ELSE observation.status IS DISTINCT FROM previous_observation.status
+                  END
+                  AND NEW.is_content_change = CASE
+                      WHEN observation.previous_observation_id IS NULL THEN false
+                      ELSE observation.canonical_hash IS DISTINCT FROM
+                           previous_observation.canonical_hash
+                  END
             ) THEN
                 RAISE EXCEPTION 'analytics job fact does not match history observation'
                     USING ERRCODE = '23514';
@@ -739,6 +825,12 @@ def upgrade() -> None:
                 JOIN analytics.fact_job_observations AS job_fact
                   ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
                  AND job_fact.observation_id = NEW.observation_id
+                JOIN analytics.dim_sources AS source
+                  ON source.source_key = NEW.source_key
+                JOIN analytics.refresh_runs AS refresh_run
+                  ON refresh_run.id = NEW.refresh_run_id
+                 AND (refresh_run.source_id IS NULL
+                      OR refresh_run.source_id = source.source_id)
                 WHERE salary.id = NEW.observation_salary_id
                   AND salary.observation_id = NEW.observation_id
                   AND NEW.source_key = job_fact.source_key
@@ -836,6 +928,12 @@ def upgrade() -> None:
                 JOIN analytics.fact_job_observations AS job_fact
                   ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
                  AND job_fact.observation_id = location.observation_id
+                JOIN analytics.dim_sources AS source
+                  ON source.source_key = job_fact.source_key
+                JOIN analytics.refresh_runs AS refresh_run
+                  ON refresh_run.id = NEW.refresh_run_id
+                 AND (refresh_run.source_id IS NULL
+                      OR refresh_run.source_id = source.source_id)
                 JOIN analytics.dim_locations AS dimension
                   ON dimension.location_key = NEW.location_key
                  AND dimension.location_id = location.location_id
@@ -918,6 +1016,12 @@ def upgrade() -> None:
                 JOIN analytics.fact_job_observations AS job_fact
                   ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
                  AND job_fact.observation_id = occupation.observation_id
+                JOIN analytics.dim_sources AS source
+                  ON source.source_key = job_fact.source_key
+                JOIN analytics.refresh_runs AS refresh_run
+                  ON refresh_run.id = NEW.refresh_run_id
+                 AND (refresh_run.source_id IS NULL
+                      OR refresh_run.source_id = source.source_id)
                 JOIN analytics.dim_occupations AS dimension
                   ON dimension.occupation_key = NEW.occupation_key
                  AND dimension.occupation_id = occupation.occupation_id
@@ -996,6 +1100,12 @@ def upgrade() -> None:
                 JOIN analytics.fact_job_observations AS job_fact
                   ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
                  AND job_fact.observation_id = skill.observation_id
+                JOIN analytics.dim_sources AS source
+                  ON source.source_key = job_fact.source_key
+                JOIN analytics.refresh_runs AS refresh_run
+                  ON refresh_run.id = NEW.refresh_run_id
+                 AND (refresh_run.source_id IS NULL
+                      OR refresh_run.source_id = source.source_id)
                 JOIN analytics.dim_skills AS dimension
                   ON dimension.skill_key = NEW.skill_key
                  AND dimension.skill_id = skill.skill_id
@@ -1362,6 +1472,102 @@ def upgrade() -> None:
         "CREATE INDEX ix_daily_salary_metrics__source_date_desc "
         "ON analytics.daily_salary_metrics (source_key, metric_date DESC)"
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_daily_refresh_lineage()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            refresh_source UUID;
+            dimension_source UUID;
+            refresh_calculation_version VARCHAR(100);
+        BEGIN
+            SELECT source_id, calculation_version
+              INTO refresh_source, refresh_calculation_version
+              FROM analytics.refresh_runs
+             WHERE id = NEW.refresh_run_id;
+            SELECT source_id INTO dimension_source
+              FROM analytics.dim_sources
+             WHERE source_key = NEW.source_key;
+
+            IF refresh_source IS NOT NULL
+               AND dimension_source IS DISTINCT FROM refresh_source THEN
+                RAISE EXCEPTION 'analytics daily row source does not match refresh run'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF NEW.calculation_version IS DISTINCT FROM refresh_calculation_version THEN
+                RAISE EXCEPTION 'analytics daily row calculation version does not match refresh run'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    for table_name in (
+        "daily_market_metrics",
+        "daily_company_hiring",
+        "daily_location_demand",
+        "daily_occupation_demand",
+        "daily_skill_demand",
+        "daily_salary_metrics",
+    ):
+        op.execute(
+            f"""
+            CREATE TRIGGER trg_{table_name}__validate_refresh_lineage
+            BEFORE INSERT OR UPDATE ON analytics.{table_name}
+            FOR EACH ROW EXECUTE FUNCTION analytics.validate_daily_refresh_lineage()
+            """
+        )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.prevent_refresh_lineage_mutation()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF (NEW.source_id IS DISTINCT FROM OLD.source_id
+                OR NEW.calculation_version IS DISTINCT FROM OLD.calculation_version)
+               AND (
+                   EXISTS (SELECT 1 FROM analytics.fact_job_observations
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.fact_salary_observations
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.bridge_job_observation_locations
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.bridge_job_observation_occupations
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.bridge_job_observation_skills
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.daily_market_metrics
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.daily_company_hiring
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.daily_location_demand
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.daily_occupation_demand
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.daily_skill_demand
+                           WHERE refresh_run_id = OLD.id)
+                   OR EXISTS (SELECT 1 FROM analytics.daily_salary_metrics
+                           WHERE refresh_run_id = OLD.id)
+               ) THEN
+                RAISE EXCEPTION 'referenced analytics refresh lineage is immutable'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_refresh_runs__lineage_immutable
+        BEFORE UPDATE ON analytics.refresh_runs
+        FOR EACH ROW EXECUTE FUNCTION analytics.prevent_refresh_lineage_mutation()
+        """
+    )
 
 
 def downgrade() -> None:
@@ -1388,8 +1594,11 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION analytics.validate_bridge_location_lineage()")
     op.execute("DROP FUNCTION analytics.validate_salary_fact_lineage()")
     op.execute("DROP FUNCTION analytics.validate_job_fact_lineage()")
+    op.execute("DROP FUNCTION analytics.prevent_refresh_lineage_mutation()")
+    op.execute("DROP FUNCTION analytics.validate_daily_refresh_lineage()")
     op.execute("DROP FUNCTION analytics.validate_skill_dimension_identity()")
     op.execute("DROP FUNCTION analytics.validate_occupation_dimension_identity()")
+    op.execute("DROP FUNCTION analytics.prevent_dimension_identity_mutation()")
     op.execute("DROP FUNCTION analytics.prevent_date_dimension_mutation()")
     op.execute("DROP FUNCTION analytics.prevent_append_only_mutation()")
     op.execute("DROP SCHEMA analytics")

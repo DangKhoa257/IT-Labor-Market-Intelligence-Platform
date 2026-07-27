@@ -683,10 +683,13 @@ def catalog(engine: sa.Engine) -> dict[str, object]:
                        (observation_id, job_posting_id, source_key, observed_date_key,
                         observation_reason, status, employment_type_code,
                         seniority_level_code, work_mode, is_first_observation,
-                        canonical_hash, normalization_version, refresh_run_id)
+                        salary_disclosed, skill_count, occupation_count, location_count,
+                        is_status_change, is_content_change, canonical_hash,
+                        normalization_version, refresh_run_id)
                    VALUES (:observation, :job, :source_key, 20260116, 'first_seen',
-                           'active', 'contract', 'senior', 'onsite', true, :hash,
-                           'analytics.v1', :refresh) RETURNING job_observation_fact_id""",
+                           'active', 'contract', 'senior', 'onsite', true,
+                           false, 1, 1, 1, false, false, :hash, 'analytics.v1', :refresh)
+                   RETURNING job_observation_fact_id""",
                 {
                     "observation": observation_2_id,
                     "job": job_2_id,
@@ -846,6 +849,247 @@ def test_taxonomy_dimension_identity(engine: sa.Engine, catalog: dict[str, objec
                 )
             ).one()
             == (None, None, None)
+        )
+
+
+def test_refresh_source_and_calculation_lineage(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    with engine.begin() as connection:
+        other_refresh = _one(
+            connection,
+            """INSERT INTO analytics.refresh_runs
+                   (run_type, status, calculation_version, source_id,
+                    started_at, finished_at)
+               VALUES ('test', 'succeeded', 'analytics-other.v1', :source,
+                       '2026-01-17T00:00:00Z', '2026-01-17T00:01:00Z') RETURNING id""",
+            {"source": catalog["other_source_id"]},
+        )
+        global_refresh = _one(
+            connection,
+            """INSERT INTO analytics.refresh_runs
+                   (run_type, status, calculation_version, started_at, finished_at)
+               VALUES ('test', 'succeeded', 'analytics-global.v1',
+                       '2026-01-17T00:00:00Z', '2026-01-17T00:01:00Z') RETURNING id""",
+            {},
+        )
+    _reject_with(
+        engine,
+        """INSERT INTO analytics.daily_market_metrics
+               (metric_date, source_key, employment_type_code, seniority_level_code,
+                work_mode, refresh_run_id, calculation_version)
+           VALUES ('2026-01-16', :source, 'full_time', 'mid', 'remote',
+                   :refresh, 'analytics-other.v1')""",
+        {"source": catalog["source_key"], "refresh": other_refresh},
+        "analytics daily row source does not match refresh run",
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """INSERT INTO analytics.daily_market_metrics
+                       (metric_date, source_key, employment_type_code,
+                        seniority_level_code, work_mode, refresh_run_id,
+                        calculation_version)
+                   VALUES ('2026-01-16', :source, 'full_time', 'mid', 'remote',
+                           :refresh, 'analytics-global.v1')"""
+            ),
+            {"source": catalog["source_key"], "refresh": global_refresh},
+        )
+    _reject_with(
+        engine,
+        """INSERT INTO analytics.daily_company_hiring
+               (metric_date, company_key, source_key, refresh_run_id, calculation_version)
+           VALUES ('2026-01-16', :company, :source, :refresh, 'wrong-version')""",
+        {
+            "company": catalog["company_key"],
+            "source": catalog["source_key"],
+            "refresh": global_refresh,
+        },
+        "analytics daily row calculation version does not match refresh run",
+    )
+    _reject_with(
+        engine,
+        "UPDATE analytics.refresh_runs SET calculation_version='changed' WHERE id=:refresh",
+        {"refresh": catalog["refresh_id"]},
+        "referenced analytics refresh lineage is immutable",
+    )
+    _reject_with(
+        engine,
+        "UPDATE analytics.refresh_runs SET source_id=:source WHERE id=:refresh",
+        {"source": catalog["other_source_id"], "refresh": catalog["refresh_id"]},
+        "referenced analytics refresh lineage is immutable",
+    )
+
+
+def test_refresh_timestamp_lifecycle_matrix(engine: sa.Engine) -> None:
+    invalid_rows = (
+        ("pending", "2026-01-18T00:00:00Z", None),
+        ("pending", None, "2026-01-18T00:01:00Z"),
+        ("running", None, None),
+        ("running", "2026-01-18T00:00:00Z", "2026-01-18T00:01:00Z"),
+        ("succeeded", None, "2026-01-18T00:01:00Z"),
+        ("succeeded", "2026-01-18T00:00:00Z", None),
+        ("failed", None, None),
+        ("cancelled", "2026-01-18T00:00:00Z", None),
+    )
+    for status, started_at, finished_at in invalid_rows:
+        _reject(
+            engine,
+            """INSERT INTO analytics.refresh_runs
+                   (run_type, status, calculation_version, started_at, finished_at)
+               VALUES ('test', :status, 'timestamp-test.v1', :started_at, :finished_at)""",
+            {"status": status, "started_at": started_at, "finished_at": finished_at},
+        )
+
+
+def test_conformed_dimension_identity_is_immutable_and_type_one_updates_work(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    cases = (
+        (
+            "dim_sources",
+            "source_key",
+            catalog["source_key"],
+            "source_id",
+            catalog["other_source_id"],
+            "analytics.dim_sources identity is immutable",
+        ),
+        (
+            "dim_companies",
+            "company_key",
+            catalog["company_key"],
+            "company_id",
+            catalog["other_company_id"],
+            "analytics.dim_companies identity is immutable",
+        ),
+        (
+            "dim_locations",
+            "location_key",
+            catalog["location_key"],
+            "location_id",
+            catalog["other_location_id"],
+            "analytics.dim_locations identity is immutable",
+        ),
+        (
+            "dim_occupations",
+            "occupation_key",
+            catalog["occupation_key"],
+            "occupation_id",
+            catalog["occupation_2_id"],
+            "analytics.dim_occupations identity is immutable",
+        ),
+        (
+            "dim_skills",
+            "skill_key",
+            catalog["skill_key"],
+            "skill_id",
+            catalog["other_skill_id"],
+            "analytics.dim_skills identity is immutable",
+        ),
+    )
+    for table, key_column, key, identity_column, identity, message in cases:
+        _reject_with(
+            engine,
+            f"UPDATE analytics.{table} SET {identity_column}=:value WHERE {key_column}=:key",
+            {"value": identity, "key": key},
+            message,
+        )
+        _reject_with(
+            engine,
+            f"UPDATE analytics.{table} SET {key_column}={key_column}+1000 WHERE {key_column}=:key",
+            {"key": key},
+            message,
+        )
+
+    _reject_with(
+        engine,
+        "UPDATE analytics.dim_locations SET location_id=:value WHERE location_key=-1",
+        {"value": catalog["location_id"]},
+        "analytics.dim_locations identity is immutable",
+    )
+    _reject_with(
+        engine,
+        "UPDATE analytics.dim_occupations SET occupation_key=1000 WHERE occupation_key=-1",
+        {},
+        "analytics.dim_occupations identity is immutable",
+    )
+
+    with engine.begin() as connection:
+        for table, key_column, column, value, key in (
+            (
+                "dim_sources",
+                "source_key",
+                "display_name",
+                "EXAMPLE_NOT_REAL_DATA source renamed",
+                catalog["source_key"],
+            ),
+            (
+                "dim_companies",
+                "company_key",
+                "canonical_name",
+                "EXAMPLE_NOT_REAL_DATA Company Type1",
+                catalog["company_key"],
+            ),
+            (
+                "dim_locations",
+                "location_key",
+                "canonical_label",
+                "EXAMPLE_NOT_REAL_DATA City Type1",
+                catalog["location_key"],
+            ),
+            (
+                "dim_occupations",
+                "occupation_key",
+                "canonical_name",
+                "EXAMPLE_NOT_REAL_DATA Occupation Type1",
+                catalog["occupation_key"],
+            ),
+            (
+                "dim_skills",
+                "skill_key",
+                "canonical_name",
+                "EXAMPLE_NOT_REAL_DATA Skill Type1",
+                catalog["skill_key"],
+            ),
+        ):
+            connection.execute(
+                sa.text(f"UPDATE analytics.{table} SET {column}=:value WHERE {key_column}=:key"),
+                {"value": value, "key": key},
+            )
+        connection.execute(
+            sa.text(
+                """UPDATE analytics.dim_locations
+                   SET latitude=10, longitude=106 WHERE location_key=:key"""
+            ),
+            {"key": catalog["location_key"]},
+        )
+        assert (
+            connection.execute(
+                sa.text(
+                    """SELECT source.source_id, company.company_id, location.location_id,
+                          occupation.occupation_id, skill.skill_id
+                   FROM analytics.fact_job_observations AS fact
+                   JOIN analytics.dim_sources AS source ON source.source_key=fact.source_key
+                   LEFT JOIN analytics.dim_companies AS company
+                     ON company.company_key=fact.company_key
+                   JOIN analytics.bridge_job_observation_locations AS location
+                     ON location.job_observation_fact_id=fact.job_observation_fact_id
+                   JOIN analytics.bridge_job_observation_occupations AS occupation
+                     ON occupation.job_observation_fact_id=fact.job_observation_fact_id
+                   JOIN analytics.bridge_job_observation_skills AS skill
+                     ON skill.job_observation_fact_id=fact.job_observation_fact_id
+                   WHERE fact.job_observation_fact_id=:fact
+                     AND skill.requirement_type='required'"""
+                ),
+                {"fact": catalog["fact_id"]},
+            ).one()
+            == (
+                catalog["source_id"],
+                catalog["company_id"],
+                catalog["location_id"],
+                catalog["occupation_id"],
+                catalog["skill_id"],
+            )
         )
 
 
@@ -1043,6 +1287,51 @@ def test_job_fact_rejects_every_cross_wired_field(
             engine,
             insert,
             values,
+            "analytics job fact does not match history observation",
+        )
+
+
+def test_job_fact_rejects_incorrect_derived_metrics(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    insert = """INSERT INTO analytics.fact_job_observations
+                    (observation_id, job_posting_id, source_key, company_key,
+                     observed_date_key, posted_date_key, observation_reason, status,
+                     employment_type_code, seniority_level_code, work_mode,
+                     salary_disclosed, skill_count, occupation_count, location_count,
+                     is_first_observation, is_status_change, is_content_change,
+                     canonical_hash, normalization_version, refresh_run_id)
+                VALUES (:observation, :job, :source, :company, 20260115, 20260114,
+                        'first_seen', 'active', 'full_time', 'mid', 'remote',
+                        :salary_disclosed, :skill_count, :occupation_count,
+                        :location_count, true, :is_status_change, :is_content_change,
+                        :hash, 'analytics.v1', :refresh)"""
+    valid = {
+        "observation": catalog["observation_id"],
+        "job": catalog["job_id"],
+        "source": catalog["source_key"],
+        "company": catalog["company_key"],
+        "salary_disclosed": True,
+        "skill_count": 2,
+        "occupation_count": 2,
+        "location_count": 1,
+        "is_status_change": False,
+        "is_content_change": False,
+        "hash": "b" * 64,
+        "refresh": catalog["refresh_id"],
+    }
+    for field, wrong_value in (
+        ("salary_disclosed", False),
+        ("skill_count", 0),
+        ("occupation_count", 0),
+        ("location_count", 0),
+        ("is_status_change", True),
+        ("is_content_change", True),
+    ):
+        _reject_with(
+            engine,
+            insert,
+            {**valid, field: wrong_value},
             "analytics job fact does not match history observation",
         )
 

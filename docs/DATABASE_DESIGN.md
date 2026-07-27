@@ -36,7 +36,9 @@ and salary currency/period/tax basis. Analytics-only `-1` location and occupatio
 invented operational UUID. Duplicate clusters remain advisory and do not reduce posting counts.
 PostgreSQL validates copied fact and bridge lineage against immutable history and makes those five
 tables append-only. Taxonomy dimension identities, deterministic immutable dates, refresh-run
-lifecycle, and salary aggregate range directions are enforced in Migration 005 DDL.
+lifecycle, and salary aggregate range directions are enforced in Migration 005 DDL. Conformed
+dimension identities and referenced refresh-run source/calculation lineage are immutable, while
+descriptive Type 1 updates remain allowed.
 
 ```powershell
 alembic upgrade head

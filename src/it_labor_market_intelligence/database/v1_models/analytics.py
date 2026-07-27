@@ -19,8 +19,12 @@ class AnalyticsRefreshRun(V1Base):
     __tablename__ = "refresh_runs"
     __table_args__ = (
         sa.CheckConstraint(
-            "status != 'running' OR started_at IS NOT NULL",
-            name="ck_refresh_runs__running_started",
+            "(status = 'pending' AND started_at IS NULL AND finished_at IS NULL) "
+            "OR (status = 'running' AND started_at IS NOT NULL AND finished_at IS NULL) "
+            "OR (status IN "
+            "('succeeded','partially_succeeded','failed','cancelled') "
+            "AND started_at IS NOT NULL AND finished_at IS NOT NULL)",
+            name="ck_refresh_runs__timestamp_lifecycle",
         ),
         {"schema": "analytics"},
     )

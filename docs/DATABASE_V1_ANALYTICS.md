@@ -30,6 +30,11 @@ UTC date, salary, relationship, classification, or dimension identity that disag
 referenced history row. A reusable trigger rejects UPDATE and DELETE on all five fact/bridge
 tables with SQLSTATE `23514`; it is not attached to dimensions, refresh runs, or aggregates.
 
+Fact metrics are deterministic: `salary_disclosed` is true iff a disclosed historical salary
+exists; child counts count historical skill, occupation, and location rows; first observations have
+false status/content change flags, and later flags compare the previous observation's status/hash.
+Source-scoped refresh runs must match fact/bridge source lineage; global runs may span sources.
+
 The six mutable daily tables use these complete grains:
 
 - market: UTC date, source, employment type, seniority, and work mode;
@@ -56,6 +61,11 @@ an operational identity. Other dimension rows map to real operational records.
 Occupation and skill rows must match their operational taxonomy version ID, release string, and
 parent. Date attributes are derived deterministically from `calendar_date`, and seeded date rows
 are immutable. A running refresh must have a start timestamp.
+
+All conformed dimension identities (surrogate and operational) are immutable after assignment;
+descriptive Type 1 updates remain allowed, and unknown `-1` rows cannot be converted. Daily rows
+must use a source-compatible refresh and exactly its calculation version. Referenced refresh-run
+source/version lineage cannot later be changed.
 
 Daily salary checks also preserve range direction: each average or median minimum must be no
 greater than its matching maximum when both are present.
