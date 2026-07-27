@@ -1,6 +1,6 @@
 # Canonical Data Schema
 
-**Phiên bản:** 0.3 (Database V1 Migration 004 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, và `quality`. Migration 004 không thêm field exchange nên header gold template không đổi.
+**Phiên bản:** 0.4 (Database V1 Migration 005 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, `quality`, và `analytics`. Migration 005 không thêm field exchange nên header gold template không đổi.
 
 ## Phân loại provenance
 
@@ -85,6 +85,17 @@
 - `quality.field_evidence` preserves immutable direct, normalized, inferred, unavailable, and unverified provenance while allowing controlled reviewer metadata. Quality issues retain mutable review/resolution state and deletion-restricted, source-consistent context.
 - Duplicate candidates and clusters are advisory and never delete or merge source postings.
 
+### Database V1 Migration 005 analytics mapping
+
+- Observation and salary facts map uniquely to immutable history rows; bridges map historical
+  location, occupation, and skill children without changing their provenance.
+- Dates and daily activity use UTC. Late observations can replace an affected old aggregate grain,
+  and every calculation records its refresh run and calculation version.
+- Source posting counts are not reduced by advisory duplicate clusters. Salary aggregates keep
+  currency, period, and tax basis separate, while missing salary values remain SQL `NULL`.
+- Only analytics location and occupation dimensions use the deterministic surrogate key `-1` for
+  unknown. Those members have no operational UUID and do not change the exchange/gold contract.
+
 ### JobPosting
 
 Identity logic lâu dài của một tin tại một nguồn. Khóa đề xuất: internal UUID; unique `(source_id, source_job_id)`. Giữ current canonical state, first/last seen và active; có nhiều `JobSnapshot`. Cross-source duplicates không bị hợp nhất vật lý ở Phase 0.
@@ -119,4 +130,4 @@ Lỗi có cấu trúc liên kết `CrawlRun`, URL/job ID nếu biết, stage, er
 
 ## Chưa quyết định
 
-Migration 004 quyết định PostgreSQL storage cho observation history, change/status/repost events, field evidence, quality review và advisory duplicate groups. Analytics, serving, writer/diff automation, lifecycle scheduling và deduplication algorithms vẫn cần task/migration riêng. Không suy diễn rằng current-state row là lịch sử đầy đủ.
+Migration 005 quyết định analytics storage từ immutable history và rebuildable daily aggregates. Serving, production refresh scheduling, writer/diff automation, lifecycle scheduling và deduplication algorithms vẫn cần task/migration riêng. Không suy diễn rằng current-state row là lịch sử đầy đủ.

@@ -244,7 +244,7 @@ def test_schema_inventory_revision_and_reference_rows(engine: sa.Engine) -> None
     assert set(inspector.get_table_names(schema="core")) == CORE_TABLES
     with engine.connect() as connection:
         assert (
-            connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "20260727_0004"
+            connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "20260727_0005"
         )
         assert (
             set(connection.scalars(sa.text("SELECT code FROM taxonomy.employment_types")))

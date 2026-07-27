@@ -85,4 +85,6 @@ alembic upgrade head
 Downgrading to Migration 003 removes only Migration 004 tables, schemas, triggers, the current
 observation pointer, and its supporting core identity constraint. Migrations 001–003, including
 the extracted-record source-identity constraint, remain intact. The next planned database layer is
-the separately reviewed analytics warehouse migration.
+Migration 005 implements the separately reviewed analytics warehouse described in
+[DATABASE_V1_ANALYTICS.md](DATABASE_V1_ANALYTICS.md). It reads immutable observations without
+changing the history/quality ownership and retention rules documented here.
