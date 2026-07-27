@@ -1234,21 +1234,9 @@ def test_facts_and_bridges_are_append_only(engine: sa.Engine) -> None:
         )
     assert triggered_tables == expected_tables
 
-    for table, identity in (
-        ("fact_job_observations", "job_observation_fact_id"),
-        ("fact_salary_observations", "salary_fact_id"),
-        (
-            "bridge_job_observation_locations",
-            "job_observation_fact_id",
-        ),
-        (
-            "bridge_job_observation_occupations",
-            "job_observation_fact_id",
-        ),
-        ("bridge_job_observation_skills", "job_observation_fact_id"),
-    ):
+    for table in expected_tables:
         for operation in (
-            f"UPDATE analytics.{table} SET {identity}={identity}",
+            f"UPDATE analytics.{table} SET loaded_at=loaded_at",
             f"DELETE FROM analytics.{table}",
         ):
             error = _reject_with(engine, operation, {}, "is append-only")
