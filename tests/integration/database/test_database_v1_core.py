@@ -222,6 +222,8 @@ def catalog(engine: sa.Engine) -> dict[str, UUID]:
     return {
         "source_a": source_a,
         "source_b": source_b,
+        "skill_version": skill_version,
+        "occupation_version": occupation_version,
         "skill_1": skills[0],
         "skill_2": skills[1],
         "occupation_1": occupations[0],
@@ -380,6 +382,13 @@ def test_locations_are_repeatable_and_validated(
            VALUES (:job, :location, 'applicant_eligible', true)""",
         {"job": job_id, "location": catalog["location_3"]},
     )
+    _reject(
+        engine,
+        """INSERT INTO core.job_posting_locations
+               (job_posting_id, location_id, relationship_type, is_remote, remote_scope)
+           VALUES (:job, :location, 'applicant_eligible', false, 'vietnam')""",
+        {"job": job_id, "location": catalog["location_3"]},
+    )
     with engine.connect() as connection:
         assert (
             connection.scalar(
@@ -441,11 +450,46 @@ def test_job_source_identity_constraints_and_extracted_lineage(
                 "hash": "a" * 64,
             },
         )
+        wrong_source_record_id = _integer(
+            connection,
+            """INSERT INTO ingestion.extracted_records
+                   (extraction_run_id, source_id, source_job_id, fetch_event_id,
+                    record_schema_version, direct_payload_json, direct_hash, extracted_at)
+               VALUES (:extraction, :source, 'lineage-job', :fetch,
+                       'direct.v1', '{}'::jsonb, :hash, now()) RETURNING id""",
+            {
+                "extraction": extraction_id,
+                "source": catalog["source_b"],
+                "fetch": fetch_id,
+                "hash": "b" * 64,
+            },
+        )
+        wrong_job_record_id = _integer(
+            connection,
+            """INSERT INTO ingestion.extracted_records
+                   (extraction_run_id, source_id, source_job_id, fetch_event_id,
+                    record_schema_version, direct_payload_json, direct_hash, extracted_at)
+               VALUES (:extraction, :source, 'other-lineage-job', :fetch,
+                       'direct.v1', '{}'::jsonb, :hash, now()) RETURNING id""",
+            {
+                "extraction": extraction_id,
+                "source": catalog["source_a"],
+                "fetch": fetch_id,
+                "hash": "c" * 64,
+            },
+        )
         lineage_job = _job(
             connection,
             catalog["source_a"],
             "lineage-job",
             extracted_record_id=record_id,
+        )
+        assert (
+            connection.scalar(
+                sa.text("SELECT latest_extracted_record_id FROM core.job_postings WHERE id=:job"),
+                {"job": lineage_job},
+            )
+            == record_id
         )
     _reject(
         engine,
@@ -497,6 +541,36 @@ def test_job_source_identity_constraints_and_extracted_lineage(
         )
     _reject(
         engine,
+        """INSERT INTO core.job_postings
+               (source_id, source_job_id, source_url, title_raw, canonical_hash,
+                first_seen_at, last_seen_at, last_changed_at)
+           VALUES (:source, 'invalid-canonical-hash', 'https://example.test/hash', 'Title',
+                   'invalid', now(), now(), now())""",
+        {"source": catalog["source_a"]},
+    )
+    _reject(
+        engine,
+        """INSERT INTO core.job_postings
+               (source_id, source_job_id, source_url, title_raw,
+                first_seen_at, last_seen_at, last_changed_at, closed_at)
+           VALUES (:source, 'invalid-closed-at', 'https://example.test/closed', 'Title',
+                   now(), now(), now(), now() - interval '1 minute')""",
+        {"source": catalog["source_a"]},
+    )
+    _reject(
+        engine,
+        """UPDATE core.job_postings SET latest_extracted_record_id=:record
+           WHERE id=:job""",
+        {"record": wrong_source_record_id, "job": lineage_job},
+    )
+    _reject(
+        engine,
+        """UPDATE core.job_postings SET latest_extracted_record_id=:record
+           WHERE id=:job""",
+        {"record": wrong_job_record_id, "job": lineage_job},
+    )
+    _reject(
+        engine,
         "DELETE FROM ingestion.sources WHERE id=:source",
         {"source": catalog["source_a"]},
     )
@@ -505,13 +579,14 @@ def test_job_source_identity_constraints_and_extracted_lineage(
             sa.text("DELETE FROM ingestion.extracted_records WHERE id=:record"),
             {"record": record_id},
         )
-        assert (
-            connection.scalar(
-                sa.text("SELECT latest_extracted_record_id FROM core.job_postings WHERE id=:job"),
-                {"job": lineage_job},
-            )
-            is None
-        )
+        identity = connection.execute(
+            sa.text(
+                """SELECT latest_extracted_record_id, source_id, source_job_id
+                   FROM core.job_postings WHERE id=:job"""
+            ),
+            {"job": lineage_job},
+        ).one()
+        assert identity == (None, catalog["source_a"], "lineage-job")
         assert {first_job, second_job} <= set(
             connection.scalars(
                 sa.text("SELECT id FROM core.job_postings WHERE source_job_id='shared-source-id'")
@@ -601,6 +676,7 @@ def test_salary_disclosure_ranges_and_cascade(engine: sa.Engine, catalog: dict[s
         ("is_disclosed, amount_min, amount_max", "true, 2, 1"),
         ("is_disclosed, amount_min, currency", "true, 1, 'usd'"),
         ("fx_rate", "1.0"),
+        ("fx_rate_date", "'2026-01-01'"),
         ("normalized_monthly_min, normalized_monthly_max, is_estimated", "2, 1, true"),
     ]
     for columns, values in invalid_columns_and_values:
@@ -675,6 +751,55 @@ def test_skills_requirement_types_alias_scope_and_delete_restriction(
         engine,
         "DELETE FROM taxonomy.skills WHERE id=:skill",
         {"skill": catalog["skill_1"]},
+    )
+
+
+def test_taxonomy_types_and_parent_versions_are_enforced(
+    engine: sa.Engine, catalog: dict[str, UUID]
+) -> None:
+    _reject(
+        engine,
+        """INSERT INTO taxonomy.occupations
+               (taxonomy_version_id, canonical_code, canonical_name, normalized_name)
+           VALUES (:version, 'wrong-type-occupation', 'Wrong Type', 'wrong type')""",
+        {"version": catalog["skill_version"]},
+    )
+    _reject(
+        engine,
+        """INSERT INTO taxonomy.skills
+               (taxonomy_version_id, canonical_code, canonical_name, normalized_name)
+           VALUES (:version, 'wrong-type-skill', 'Wrong Type', 'wrong type')""",
+        {"version": catalog["occupation_version"]},
+    )
+    with engine.begin() as connection:
+        other_occupation_version = _uuid(
+            connection,
+            """INSERT INTO taxonomy.taxonomy_versions (taxonomy_type, version, name)
+               VALUES ('occupation', 'SYNTHETIC_TEST_DATA.v2',
+                       'SYNTHETIC_TEST_DATA occupations v2') RETURNING id""",
+            {},
+        )
+        other_skill_version = _uuid(
+            connection,
+            """INSERT INTO taxonomy.taxonomy_versions (taxonomy_type, version, name)
+               VALUES ('skill', 'SYNTHETIC_TEST_DATA.v2',
+                       'SYNTHETIC_TEST_DATA skills v2') RETURNING id""",
+            {},
+        )
+    _reject(
+        engine,
+        """INSERT INTO taxonomy.occupations
+               (taxonomy_version_id, canonical_code, canonical_name, normalized_name, parent_id)
+           VALUES (:version, 'cross-version-occupation', 'Cross Version', 'cross version',
+                   :parent)""",
+        {"version": other_occupation_version, "parent": catalog["occupation_1"]},
+    )
+    _reject(
+        engine,
+        """INSERT INTO taxonomy.skills
+               (taxonomy_version_id, canonical_code, canonical_name, normalized_name, parent_id)
+           VALUES (:version, 'cross-version-skill', 'Cross Version', 'cross version', :parent)""",
+        {"version": other_skill_version, "parent": catalog["skill_1"]},
     )
 
 

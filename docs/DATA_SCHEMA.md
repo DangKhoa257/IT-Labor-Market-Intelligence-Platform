@@ -50,7 +50,7 @@
 | `collected_at` | datetime | R | System | Thời điểm thu evidence/snapshot này | Fetch clock | ISO 8601 UTC | Không | Không |
 | `is_active` | boolean | R | System | Projection trạng thái lifecycle cũ | Quan sát thành công | map từ `current_status`; fetch lỗi không đủ để đóng tin | Không | Có, từ quan sát hệ thống |
 | `content_hash` | string | R | System | Hash nội dung canonical để nhận biết đổi | Raw/normalized evidence bytes | lowercase SHA-256 hex; contract bytes phải version hóa | Không | Không |
-| `extractor_version` | string | R | System | Phiên bản extractor tạo record | Build/runtime metadata | semantic version hoặc immutable build ID | Không | Không |
+| `extractor_version` | string | R | System | Phiên bản extractor tạo record | Build/runtime metadata | semantic version hoặc immutable build ID; độc lập với Alembic migration revision | Không | Không |
 | `confidence_score` | number [0,1] | R | System | Confidence tổng hợp của normalized/inferred fields | Validation/extraction rules | clamp [0,1]; công thức version hóa | Không | Có, từ rule metrics |
 
 `R` = required, `O` = optional. Từ “suy luận” ở bảng bao gồm parsing/rule deterministic; LLM không thuộc Phase 0.
@@ -72,9 +72,9 @@
 - Company candidates, aliases, and domains live separately; normalized company names are indexed but are not unique and do not trigger an automatic merge.
 - `location_raw` is retained on the posting while resolved locations are repeatable relations, including remote scope.
 - Flat salary exchange fields are compatibility projections only. Relational salary offers remain separate by component, period, currency, tax basis, disclosure, and estimation state.
-- Skill and occupation assignments reference immutable taxonomy versions and retain confidence/method metadata.
+- Occupations and skills must use taxonomy versions of their own type, and each parent must be in the child's version. Assignments retain confidence/method metadata.
 - `description_raw` maps to the single currently retained description. Historical descriptions and job observations are not part of Migration 003.
-- Every persisted posting retains `source_url`, first/last-seen timestamps, and optional lineage to `ingestion.extracted_records`.
+- Every persisted posting retains `source_url`, first/last-seen timestamps, and optional identity-matched lineage to `ingestion.extracted_records`; deleting that record clears only the lineage ID.
 
 ### JobPosting
 

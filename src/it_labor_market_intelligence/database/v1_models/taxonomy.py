@@ -92,6 +92,13 @@ class Occupation(V1Base):
         sa.UniqueConstraint(
             "taxonomy_version_id", "canonical_code", name="uq_occupations__version_code"
         ),
+        sa.UniqueConstraint("id", "taxonomy_version_id", name="uq_occupations__id_version"),
+        sa.ForeignKeyConstraint(
+            ("parent_id", "taxonomy_version_id"),
+            ("taxonomy.occupations.id", "taxonomy.occupations.taxonomy_version_id"),
+            name="fk_occupations__parent_id_version__occupations",
+            ondelete="RESTRICT",
+        ),
         {"schema": "taxonomy"},
     )
     id: Mapped[UUID] = mapped_column(
@@ -104,9 +111,7 @@ class Occupation(V1Base):
     canonical_code: Mapped[str] = mapped_column(sa.String(100))
     canonical_name: Mapped[str] = mapped_column(sa.String(255))
     normalized_name: Mapped[str] = mapped_column(sa.String(255))
-    parent_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), sa.ForeignKey("taxonomy.occupations.id", ondelete="RESTRICT")
-    )
+    parent_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     description: Mapped[str | None] = mapped_column(sa.Text)
     external_system: Mapped[str | None] = mapped_column(sa.String(100))
     external_id: Mapped[str | None] = mapped_column(sa.String(255))
@@ -167,6 +172,13 @@ class Skill(V1Base):
         sa.UniqueConstraint(
             "taxonomy_version_id", "canonical_code", name="uq_skills__version_code"
         ),
+        sa.UniqueConstraint("id", "taxonomy_version_id", name="uq_skills__id_version"),
+        sa.ForeignKeyConstraint(
+            ("parent_id", "taxonomy_version_id"),
+            ("taxonomy.skills.id", "taxonomy.skills.taxonomy_version_id"),
+            name="fk_skills__parent_id_version__skills",
+            ondelete="RESTRICT",
+        ),
         {"schema": "taxonomy"},
     )
     id: Mapped[UUID] = mapped_column(
@@ -180,9 +192,7 @@ class Skill(V1Base):
     canonical_name: Mapped[str] = mapped_column(sa.String(255))
     normalized_name: Mapped[str] = mapped_column(sa.String(255))
     skill_type: Mapped[str] = mapped_column(sa.String(30), server_default="other")
-    parent_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), sa.ForeignKey("taxonomy.skills.id", ondelete="RESTRICT")
-    )
+    parent_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     description: Mapped[str | None] = mapped_column(sa.Text)
     external_system: Mapped[str | None] = mapped_column(sa.String(100))
     external_id: Mapped[str | None] = mapped_column(sa.String(255))

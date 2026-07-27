@@ -140,6 +140,16 @@ class CoreJobPosting(V1Base):
     __tablename__ = "job_postings"
     __table_args__ = (
         sa.UniqueConstraint("source_id", "source_job_id", name="uq_job_postings__source_identity"),
+        sa.ForeignKeyConstraint(
+            ("latest_extracted_record_id", "source_id", "source_job_id"),
+            (
+                "ingestion.extracted_records.id",
+                "ingestion.extracted_records.source_id",
+                "ingestion.extracted_records.source_job_id",
+            ),
+            name="fk_job_postings__latest_extracted_identity__extracted_records",
+            ondelete="SET NULL (latest_extracted_record_id)",
+        ),
         {"schema": "core"},
     )
     id: Mapped[UUID] = mapped_column(
@@ -149,10 +159,7 @@ class CoreJobPosting(V1Base):
         PGUUID(as_uuid=True), sa.ForeignKey("ingestion.sources.id", ondelete="RESTRICT")
     )
     source_job_id: Mapped[str] = mapped_column(sa.String(255))
-    latest_extracted_record_id: Mapped[int | None] = mapped_column(
-        sa.BigInteger,
-        sa.ForeignKey("ingestion.extracted_records.id", ondelete="SET NULL"),
-    )
+    latest_extracted_record_id: Mapped[int | None] = mapped_column(sa.BigInteger)
     company_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), sa.ForeignKey("core.companies.id", ondelete="RESTRICT")
     )
@@ -235,6 +242,10 @@ class JobPostingLocation(V1Base):
             "relationship_type",
             unique=True,
             postgresql_where=sa.text("is_primary"),
+        ),
+        sa.CheckConstraint(
+            "is_remote = (remote_scope IS NOT NULL)",
+            name="ck_job_posting_locations__remote_scope_consistency",
         ),
         {"schema": "core"},
     )

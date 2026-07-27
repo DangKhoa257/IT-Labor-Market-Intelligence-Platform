@@ -16,9 +16,10 @@ It creates exactly these tables:
 
 `core.job_postings` represents one posting from one source. Its stable identity is
 `(source_id, source_job_id)`. The same source job ID may exist at another source and remains a
-separate posting. `latest_extracted_record_id` preserves optional lineage to the direct extraction
-that produced the current state; deleting that extraction sets the reference to null without
-deleting the posting.
+separate posting. A composite foreign key permits `latest_extracted_record_id` only when the
+extracted record has the posting's own `(source_id, source_job_id)` identity. Deleting that
+extraction sets only `latest_extracted_record_id` to null; the posting's source identity is
+preserved.
 
 The current Phase 3 API continues to use the unqualified prototype ORM tables. It does not read
 Migration 003 tables. A later, focused application service will map accepted
@@ -36,7 +37,8 @@ cannot be deleted; merges and retirement require a later audited workflow.
 Locations are canonical entities keyed by `resolution_key`. A posting has repeatable
 `job_posting_locations` rows, so multiple workplaces and applicant-eligibility scopes are not
 collapsed into one city. A partial unique index permits only one primary location for each
-posting/relationship type. Remote assignments require an explicit remote scope.
+posting/relationship type. Remote assignments require an explicit remote scope, and non-remote
+assignments require the scope to be null.
 
 ## Salary disclosure
 
@@ -53,6 +55,10 @@ unique only within a taxonomy version. Aliases may repeat across different skill
 while duplicates for the same entity and source scope are rejected. Employment types and
 seniority levels are deterministic reference rows seeded by the migration.
 
+PostgreSQL triggers require occupations to use occupation taxonomy versions and skills to use
+skill taxonomy versions. Composite self-references require every parent to belong to the same
+taxonomy version as its child.
+
 `job_posting_skills` preserves requirement type (`required`, `preferred`, `mentioned`, or
 `unknown`). `job_posting_occupations` supports one primary and multiple secondary occupations.
 
@@ -61,6 +67,10 @@ seniority levels are deterministic reference rows seeded by the migration.
 Migration 003 stores only current posting state and one currently retained description. It does
 not record observations, field changes, status events, or historical descriptions. Those belong
 to a separately reviewed Migration 004. Fetch failures still do not imply posting closure.
+
+Alembic migration revisions and extractor versions are independent version systems. Gold examples
+use a generic synthetic extractor version and do not encode `m003` merely because their storage
+contract is documented alongside Migration 003.
 
 ## Security and migration operations
 

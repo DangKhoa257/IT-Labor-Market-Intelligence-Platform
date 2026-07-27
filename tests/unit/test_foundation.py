@@ -95,9 +95,6 @@ def test_gold_template_contains_only_marked_examples() -> None:
 def test_migration_003_canonical_contract_is_synchronized() -> None:
     schema_text = (REPOSITORY_ROOT / "docs" / "DATA_SCHEMA.md").read_text(encoding="utf-8")
     core_text = (REPOSITORY_ROOT / "docs" / "DATABASE_V1_CORE.md").read_text(encoding="utf-8")
-    with GOLD_TEMPLATE.open(encoding="utf-8", newline="") as csv_file:
-        rows = list(csv.DictReader(csv_file))
-
     assert "Migration 003 compatibility" in schema_text
     for table in (
         "core.job_postings",
@@ -107,4 +104,3 @@ def test_migration_003_canonical_contract_is_synchronized() -> None:
         "core.job_posting_occupations",
     ):
         assert table in schema_text or table in core_text
-    assert all("m003" in row["extractor_version"] for row in rows)

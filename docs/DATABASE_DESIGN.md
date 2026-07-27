@@ -15,6 +15,10 @@ rewrite API repositories and no full canonical importer is included.
 Configuration comes from `DATABASE_URL`. PostgreSQL-specific migration behavior is tested on
 PostgreSQL; SQLite remains restricted to isolated prototype unit tests.
 
+Database V1 enforces source-scoped extracted-record lineage, taxonomy-version type and parent
+integrity, and bidirectional remote-scope consistency in PostgreSQL rather than relying on importer
+behavior. Alembic revision identifiers and extractor build versions remain independent.
+
 ```powershell
 alembic upgrade head
 alembic current

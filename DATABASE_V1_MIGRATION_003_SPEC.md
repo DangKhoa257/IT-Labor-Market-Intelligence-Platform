@@ -68,6 +68,9 @@ Required parent:
 down_revision = "20260726_0002"
 ```
 
+Alembic revision identifiers and extractor versions are separate version systems. Gold examples
+must use a generic synthetic extractor version such as `0.0.0-example`, not an `m003` marker.
+
 ## 4. Schemas
 
 Create:
@@ -264,13 +267,14 @@ Foreign keys:
 
 ```text
 taxonomy_version_id → taxonomy.taxonomy_versions(id) ON DELETE RESTRICT
-parent_id → taxonomy.occupations(id) ON DELETE RESTRICT
+(parent_id, taxonomy_version_id) → taxonomy.occupations(id, taxonomy_version_id) ON DELETE RESTRICT
 ```
 
 Constraints:
 
 ```text
 PRIMARY KEY (id)
+UNIQUE (id, taxonomy_version_id)
 UNIQUE (taxonomy_version_id, canonical_code)
 length(trim(canonical_code)) > 0
 length(trim(canonical_name)) > 0
@@ -290,6 +294,10 @@ ix_occupations__active_name (is_active, canonical_name)
 ```
 
 Do not make `normalized_name` globally unique.
+
+An explicit PostgreSQL trigger rejects an occupation whose taxonomy version has a
+`taxonomy_type` other than `occupation`. The composite parent foreign key ensures that a parent
+occupation belongs to the child's taxonomy version.
 
 ## 6.5 `taxonomy.occupation_aliases`
 
@@ -386,13 +394,14 @@ Foreign keys:
 
 ```text
 taxonomy_version_id → taxonomy.taxonomy_versions(id) ON DELETE RESTRICT
-parent_id → taxonomy.skills(id) ON DELETE RESTRICT
+(parent_id, taxonomy_version_id) → taxonomy.skills(id, taxonomy_version_id) ON DELETE RESTRICT
 ```
 
 Constraints and indexes mirror `taxonomy.occupations`:
 
 ```text
 PRIMARY KEY (id)
+UNIQUE (id, taxonomy_version_id)
 UNIQUE (taxonomy_version_id, canonical_code)
 parent_id IS NULL OR parent_id != id
 ix_skills__taxonomy_version_id (taxonomy_version_id)
@@ -402,6 +411,10 @@ ix_skills__type_active (skill_type, is_active)
 ```
 
 Do not create skill co-occurrence or relation tables in Migration 003.
+
+An explicit PostgreSQL trigger rejects a skill whose taxonomy version has a `taxonomy_type` other
+than `skill`. The composite parent foreign key ensures that a parent skill belongs to the child's
+taxonomy version.
 
 ## 6.7 `taxonomy.skill_aliases`
 
@@ -697,7 +710,9 @@ Foreign keys:
 
 ```text
 source_id → ingestion.sources(id) ON DELETE RESTRICT
-latest_extracted_record_id → ingestion.extracted_records(id) ON DELETE SET NULL
+(latest_extracted_record_id, source_id, source_job_id) →
+  ingestion.extracted_records(id, source_id, source_job_id)
+  ON DELETE SET NULL (latest_extracted_record_id)
 company_id → core.companies(id) ON DELETE RESTRICT
 employment_type_code → taxonomy.employment_types(code) ON DELETE RESTRICT
 seniority_level_code → taxonomy.seniority_levels(code) ON DELETE RESTRICT
@@ -833,7 +848,7 @@ Constraints:
 ```text
 UNIQUE (job_posting_id, location_id, relationship_type)
 confidence IS NULL OR confidence BETWEEN 0 AND 1
-NOT is_remote OR remote_scope IS NOT NULL
+is_remote = (remote_scope IS NOT NULL)
 ```
 
 Only one primary location per relationship type:
@@ -1045,16 +1060,17 @@ Upgrade order:
 
 1. Create `taxonomy` and `core` schemas.
 2. Revoke public privileges.
-3. Create `taxonomy.taxonomy_versions`.
-4. Create and seed `taxonomy.employment_types`.
-5. Create and seed `taxonomy.seniority_levels`.
-6. Create occupations and occupation aliases.
-7. Create skills and skill aliases.
-8. Create `core.locations`.
-9. Create companies, company aliases, and company domains.
-10. Create `core.job_postings`.
-11. Create descriptions, posting locations, salaries, posting skills, and posting occupations.
-12. Create indexes.
+3. Add the supporting extracted-record source-identity uniqueness.
+4. Create `taxonomy.taxonomy_versions` and the taxonomy-type enforcement function.
+5. Create and seed `taxonomy.employment_types`.
+6. Create and seed `taxonomy.seniority_levels`.
+7. Create occupations and occupation aliases, including the occupation-type trigger.
+8. Create skills and skill aliases, including the skill-type trigger.
+9. Create `core.locations`.
+10. Create companies, company aliases, and company domains.
+11. Create `core.job_postings`.
+12. Create descriptions, posting locations, salaries, posting skills, and posting occupations.
+13. Create indexes.
 
 Downgrade in exact reverse dependency order.
 
@@ -1145,7 +1161,8 @@ Required tests:
 - duplicate `resolution_key` is rejected;
 - one posting supports multiple locations;
 - only one primary location per relationship type;
-- remote rows require `remote_scope`.
+- remote rows require `remote_scope`;
+- non-remote rows reject a non-null `remote_scope`.
 
 ## Job postings
 
@@ -1157,8 +1174,12 @@ Required tests:
 - min experience greater than max is rejected;
 - invalid confidence/hash is rejected;
 - invalid first/last-seen ordering is rejected;
+- `closed_at` before `first_seen_at` is rejected;
 - deleting a source with postings is restricted;
-- deleting the linked extracted record sets the FK to null without deleting the posting.
+- matching extracted-record identity is accepted;
+- extracted records with another source or source job ID are rejected;
+- deleting the linked extracted record sets only `latest_extracted_record_id` to null without
+  modifying the posting source identity.
 
 ## Descriptions
 
@@ -1186,13 +1207,17 @@ Required tests:
 - duplicate `(job, skill, requirement_type)` is rejected;
 - invalid confidence is rejected;
 - deleting referenced skills is restricted;
-- aliases are not globally unique across different skills.
+- aliases are not globally unique across different skills;
+- a non-skill taxonomy version is rejected;
+- a parent from another taxonomy version is rejected.
 
 ## Occupations
 
 - one primary plus multiple secondary occupations are supported;
 - a second primary occupation is rejected;
 - duplicate occupation assignment is rejected;
+- a non-occupation taxonomy version is rejected;
+- a parent from another taxonomy version is rejected;
 - deleting referenced occupations is restricted;
 - aliases are not globally unique across different occupations.
 

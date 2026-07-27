@@ -13,6 +13,11 @@ def upgrade() -> None:
     op.execute("CREATE SCHEMA IF NOT EXISTS core")
     op.execute("REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC")
     op.execute("REVOKE ALL ON SCHEMA core FROM PUBLIC")
+    op.execute(
+        "ALTER TABLE ingestion.extracted_records "
+        "ADD CONSTRAINT uq_extracted_records__id_source_identity "
+        "UNIQUE (id, source_id, source_job_id)"
+    )
 
     op.execute(
         """
@@ -42,6 +47,29 @@ def upgrade() -> None:
             CONSTRAINT ck_taxonomy_versions__active_valid_from CHECK
                 (status != 'active' OR valid_from IS NOT NULL)
         )
+        """
+    )
+    op.execute(
+        """
+        CREATE FUNCTION taxonomy.enforce_taxonomy_entity_type()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            actual_type VARCHAR(30);
+        BEGIN
+            SELECT taxonomy_type INTO actual_type
+            FROM taxonomy.taxonomy_versions
+            WHERE id = NEW.taxonomy_version_id;
+
+            IF actual_type IS DISTINCT FROM TG_ARGV[0] THEN
+                RAISE EXCEPTION 'taxonomy version % must have type %',
+                    NEW.taxonomy_version_id, TG_ARGV[0]
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
         """
     )
     op.execute(
@@ -141,9 +169,11 @@ def upgrade() -> None:
             CONSTRAINT fk_occupations__taxonomy_version_id__taxonomy_versions
                 FOREIGN KEY (taxonomy_version_id) REFERENCES taxonomy.taxonomy_versions(id)
                 ON DELETE RESTRICT,
-            CONSTRAINT fk_occupations__parent_id__occupations FOREIGN KEY (parent_id)
-                REFERENCES taxonomy.occupations(id) ON DELETE RESTRICT,
+            CONSTRAINT fk_occupations__parent_id_version__occupations
+                FOREIGN KEY (parent_id, taxonomy_version_id)
+                REFERENCES taxonomy.occupations(id, taxonomy_version_id) ON DELETE RESTRICT,
             CONSTRAINT uq_occupations__version_code UNIQUE (taxonomy_version_id, canonical_code),
+            CONSTRAINT uq_occupations__id_version UNIQUE (id, taxonomy_version_id),
             CONSTRAINT ck_occupations__names CHECK
                 (length(trim(canonical_code)) > 0 AND length(trim(canonical_name)) > 0
                  AND length(trim(normalized_name)) > 0),
@@ -152,6 +182,13 @@ def upgrade() -> None:
                  AND (valid_to IS NULL OR valid_to > valid_from)),
             CONSTRAINT ck_occupations__parent_not_self CHECK (parent_id IS NULL OR parent_id != id)
         )
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_occupations__taxonomy_type
+        BEFORE INSERT OR UPDATE OF taxonomy_version_id ON taxonomy.occupations
+        FOR EACH ROW EXECUTE FUNCTION taxonomy.enforce_taxonomy_entity_type('occupation')
         """
     )
     op.execute(
@@ -225,9 +262,11 @@ def upgrade() -> None:
             CONSTRAINT fk_skills__taxonomy_version_id__taxonomy_versions
                 FOREIGN KEY (taxonomy_version_id) REFERENCES taxonomy.taxonomy_versions(id)
                 ON DELETE RESTRICT,
-            CONSTRAINT fk_skills__parent_id__skills FOREIGN KEY (parent_id)
-                REFERENCES taxonomy.skills(id) ON DELETE RESTRICT,
+            CONSTRAINT fk_skills__parent_id_version__skills
+                FOREIGN KEY (parent_id, taxonomy_version_id)
+                REFERENCES taxonomy.skills(id, taxonomy_version_id) ON DELETE RESTRICT,
             CONSTRAINT uq_skills__version_code UNIQUE (taxonomy_version_id, canonical_code),
+            CONSTRAINT uq_skills__id_version UNIQUE (id, taxonomy_version_id),
             CONSTRAINT ck_skills__names CHECK
                 (length(trim(canonical_code)) > 0 AND length(trim(canonical_name)) > 0
                  AND length(trim(normalized_name)) > 0),
@@ -239,6 +278,13 @@ def upgrade() -> None:
                  AND (valid_to IS NULL OR valid_to > valid_from)),
             CONSTRAINT ck_skills__parent_not_self CHECK (parent_id IS NULL OR parent_id != id)
         )
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_skills__taxonomy_type
+        BEFORE INSERT OR UPDATE OF taxonomy_version_id ON taxonomy.skills
+        FOR EACH ROW EXECUTE FUNCTION taxonomy.enforce_taxonomy_entity_type('skill')
         """
     )
     op.execute(
@@ -480,9 +526,10 @@ def upgrade() -> None:
             CONSTRAINT pk_job_postings PRIMARY KEY (id),
             CONSTRAINT fk_job_postings__source_id__sources FOREIGN KEY (source_id)
                 REFERENCES ingestion.sources(id) ON DELETE RESTRICT,
-            CONSTRAINT fk_job_postings__latest_extracted_record_id__extracted_records
-                FOREIGN KEY (latest_extracted_record_id) REFERENCES ingestion.extracted_records(id)
-                ON DELETE SET NULL,
+            CONSTRAINT fk_job_postings__latest_extracted_identity__extracted_records
+                FOREIGN KEY (latest_extracted_record_id, source_id, source_job_id)
+                REFERENCES ingestion.extracted_records(id, source_id, source_job_id)
+                ON DELETE SET NULL (latest_extracted_record_id),
             CONSTRAINT fk_job_postings__company_id__companies FOREIGN KEY (company_id)
                 REFERENCES core.companies(id) ON DELETE RESTRICT,
             CONSTRAINT fk_job_postings__employment_type_code__employment_types
@@ -613,8 +660,8 @@ def upgrade() -> None:
                     ('vietnam','asia','timezone_limited','worldwide','unspecified')),
             CONSTRAINT ck_job_posting_locations__confidence CHECK
                 (confidence IS NULL OR confidence BETWEEN 0 AND 1),
-            CONSTRAINT ck_job_posting_locations__remote_requires_scope CHECK
-                (NOT is_remote OR remote_scope IS NOT NULL)
+            CONSTRAINT ck_job_posting_locations__remote_scope_consistency CHECK
+                (is_remote = (remote_scope IS NOT NULL))
         )
         """
     )
@@ -815,11 +862,18 @@ def downgrade() -> None:
     op.execute("DROP TABLE core.companies")
     op.execute("DROP TABLE core.locations")
     op.execute("DROP TABLE taxonomy.skill_aliases")
+    op.execute("DROP TRIGGER trg_skills__taxonomy_type ON taxonomy.skills")
     op.execute("DROP TABLE taxonomy.skills")
     op.execute("DROP TABLE taxonomy.occupation_aliases")
+    op.execute("DROP TRIGGER trg_occupations__taxonomy_type ON taxonomy.occupations")
     op.execute("DROP TABLE taxonomy.occupations")
+    op.execute("DROP FUNCTION taxonomy.enforce_taxonomy_entity_type()")
     op.execute("DROP TABLE taxonomy.seniority_levels")
     op.execute("DROP TABLE taxonomy.employment_types")
     op.execute("DROP TABLE taxonomy.taxonomy_versions")
+    op.execute(
+        "ALTER TABLE ingestion.extracted_records "
+        "DROP CONSTRAINT uq_extracted_records__id_source_identity"
+    )
     op.execute("DROP SCHEMA core")
     op.execute("DROP SCHEMA taxonomy")
