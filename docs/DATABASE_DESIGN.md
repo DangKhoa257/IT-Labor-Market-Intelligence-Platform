@@ -34,6 +34,9 @@ Migration 005 facts map uniquely to immutable history rows. Daily aggregates are
 data can rebuild old UTC dates. Their full grains preserve source, work mode, skill requirement,
 and salary currency/period/tax basis. Analytics-only `-1` location and occupation members have no
 invented operational UUID. Duplicate clusters remain advisory and do not reduce posting counts.
+PostgreSQL validates copied fact and bridge lineage against immutable history and makes those five
+tables append-only. Taxonomy dimension identities, deterministic immutable dates, refresh-run
+lifecycle, and salary aggregate range directions are enforced in Migration 005 DDL.
 
 ```powershell
 alembic upgrade head

@@ -154,6 +154,7 @@ Checks:
 - end date requires start date and is not earlier;
 - JSONB values are objects;
 - terminal status requires start and finish timestamps;
+- `running` status requires `started_at`;
 - finish is not earlier than start.
 
 Indexes:
@@ -201,6 +202,10 @@ month 1..12
 week 1..53
 day_of_week 1..7
 ```
+
+Every derived field must match `calendar_date`: year, quarter, month, localized month/day names,
+ISO week/day values, weekend flag, and month/quarter boundaries. Seeded date rows reject UPDATE
+and DELETE with SQLSTATE `23514`.
 
 Seed with PostgreSQL `generate_series`:
 
@@ -312,6 +317,9 @@ warehouse_synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
 ```
 
 Dimensions use Type 1 behavior: update descriptive attributes while preserving the surrogate key.
+PostgreSQL validation triggers require every normal occupation/skill dimension row to match its
+operational entity's taxonomy-version ID, version string, and parent. The unknown occupation `-1`
+row remains exempt because it deliberately has no operational identity.
 
 ---
 
@@ -371,6 +379,10 @@ Important indexes:
 
 Fact rows are append-only from the application perspective.
 
+PostgreSQL validates every copied job-fact field against `history.job_observations`, including
+NULL-safe company identity and UTC-derived date keys. The source key must resolve to the historical
+source. UPDATE and DELETE are rejected with SQLSTATE `23514`.
+
 ---
 
 ## 6.2 `analytics.fact_salary_observations`
@@ -410,6 +422,10 @@ Apply salary checks compatible with `history.observation_salaries`.
 
 Unknown/undisclosed values remain null.
 
+PostgreSQL validates that the salary belongs to the stated observation and job fact, that source,
+company, and observed date match the job fact, and that every copied salary value matches the
+historical salary. UPDATE and DELETE are rejected with SQLSTATE `23514`.
+
 ---
 
 # 7. Bridge tables
@@ -433,6 +449,8 @@ PRIMARY KEY (job_observation_fact_id, observation_location_id)
 ```
 
 Use FKs to fact, history location, dimension, and refresh run. Enforce remote consistency.
+PostgreSQL also proves that the historical child belongs to the fact's observation, the dimension
+resolves to the same operational location, and every copied relationship field matches history.
 
 ## `analytics.bridge_job_observation_occupations`
 
@@ -450,6 +468,8 @@ PRIMARY KEY (job_observation_fact_id, observation_occupation_id)
 ```
 
 Partial unique index: one primary occupation per job fact.
+PostgreSQL validates observation ownership, operational dimension identity, and copied
+classification fields.
 
 ## `analytics.bridge_job_observation_skills`
 
@@ -469,6 +489,11 @@ Requirement type:
 ```text
 required, preferred, mentioned, unknown
 ```
+
+PostgreSQL validates observation ownership, operational skill identity, and copied requirement
+and confidence fields. All three bridges reject UPDATE and DELETE with SQLSTATE `23514` through
+the same reusable append-only trigger used by both fact tables. Dimensions, refresh runs, and daily
+aggregates do not use that trigger.
 
 ---
 
@@ -615,6 +640,7 @@ Rules:
 - currencies are uppercase three-letter codes;
 - periods and tax bases are valid;
 - counts and numeric metrics are nonnegative;
+- average and median minimum values cannot exceed their corresponding maximum values;
 - do not combine different currencies, periods, or tax bases;
 - aggregate rows require at least one disclosed salary.
 
@@ -702,6 +728,10 @@ Required coverage:
 - one observation fact per history observation;
 - one salary fact per historical salary row;
 - null salary remains null;
+- copied fact and bridge lineage rejects every cross-wired field;
+- fact/bridge append-only trigger inventory and mutation rejection;
+- taxonomy dimension identity, deterministic immutable dates, and running lifecycle checks;
+- all five daily salary minimum/maximum directions reject inverted ranges;
 - bridge uniqueness and one primary occupation;
 - refresh-run lifecycle and date-window checks;
 - every aggregate grain rejects duplicates;

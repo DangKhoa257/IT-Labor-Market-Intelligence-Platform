@@ -17,7 +17,13 @@ from .base import V1Base
 
 class AnalyticsRefreshRun(V1Base):
     __tablename__ = "refresh_runs"
-    __table_args__ = {"schema": "analytics"}
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status != 'running' OR started_at IS NOT NULL",
+            name="ck_refresh_runs__running_started",
+        ),
+        {"schema": "analytics"},
+    )
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")
     )
@@ -56,7 +62,31 @@ class AnalyticsRefreshRun(V1Base):
 
 class DimDate(V1Base):
     __tablename__ = "dim_dates"
-    __table_args__ = {"schema": "analytics"}
+    __table_args__ = (
+        sa.CheckConstraint(
+            "date_key = to_char(calendar_date, 'YYYYMMDD')::integer",
+            name="ck_dim_dates__date_key",
+        ),
+        sa.CheckConstraint(
+            "year = extract(year FROM calendar_date)::smallint "
+            "AND quarter = extract(quarter FROM calendar_date)::smallint "
+            "AND month = extract(month FROM calendar_date)::smallint "
+            "AND month_name = trim(to_char(calendar_date, 'Month')) "
+            "AND week_of_year = extract(week FROM calendar_date)::smallint "
+            "AND day_of_month = extract(day FROM calendar_date)::smallint "
+            "AND day_of_week = extract(isodow FROM calendar_date)::smallint "
+            "AND day_name = trim(to_char(calendar_date, 'Day')) "
+            "AND is_weekend = (extract(isodow FROM calendar_date) IN (6, 7)) "
+            "AND month_start_date = date_trunc('month', calendar_date)::date "
+            "AND month_end_date = "
+            "(date_trunc('month', calendar_date) + interval '1 month - 1 day')::date "
+            "AND quarter_start_date = date_trunc('quarter', calendar_date)::date "
+            "AND quarter_end_date = "
+            "(date_trunc('quarter', calendar_date) + interval '3 months - 1 day')::date",
+            name="ck_dim_dates__derived_fields",
+        ),
+        {"schema": "analytics"},
+    )
     date_key: Mapped[int] = mapped_column(primary_key=True)
     calendar_date: Mapped[date] = mapped_column(sa.Date, unique=True)
     year: Mapped[int] = mapped_column(sa.SmallInteger)
@@ -149,7 +179,16 @@ class DimLocation(V1Base):
 
 class DimOccupation(V1Base):
     __tablename__ = "dim_occupations"
-    __table_args__ = {"schema": "analytics"}
+    __table_args__ = (
+        sa.CheckConstraint(
+            "(occupation_key = -1 AND occupation_id IS NULL "
+            "AND taxonomy_version_id IS NULL) OR "
+            "(occupation_key > 0 AND occupation_id IS NOT NULL "
+            "AND taxonomy_version_id IS NOT NULL)",
+            name="ck_dim_occupations__unknown_identity",
+        ),
+        {"schema": "analytics"},
+    )
     occupation_key: Mapped[int] = mapped_column(
         sa.BigInteger, sa.Identity(always=False), primary_key=True
     )
@@ -588,7 +627,26 @@ class DailySkillDemand(V1Base):
 
 class DailySalaryMetric(V1Base):
     __tablename__ = "daily_salary_metrics"
-    __table_args__ = {"schema": "analytics"}
+    __table_args__ = (
+        sa.CheckConstraint(
+            "(amount_min_average IS NULL OR amount_max_average IS NULL "
+            "OR amount_min_average <= amount_max_average) "
+            "AND (normalized_monthly_min_average IS NULL "
+            "OR normalized_monthly_max_average IS NULL "
+            "OR normalized_monthly_min_average <= normalized_monthly_max_average) "
+            "AND (normalized_annual_min_average IS NULL "
+            "OR normalized_annual_max_average IS NULL "
+            "OR normalized_annual_min_average <= normalized_annual_max_average) "
+            "AND (normalized_monthly_min_median IS NULL "
+            "OR normalized_monthly_max_median IS NULL "
+            "OR normalized_monthly_min_median <= normalized_monthly_max_median) "
+            "AND (normalized_annual_min_median IS NULL "
+            "OR normalized_annual_max_median IS NULL "
+            "OR normalized_annual_min_median <= normalized_annual_max_median)",
+            name="ck_daily_salary_metrics__ranges",
+        ),
+        {"schema": "analytics"},
+    )
     metric_date: Mapped[date] = mapped_column(
         sa.Date,
         sa.ForeignKey("analytics.dim_dates.calendar_date", ondelete="RESTRICT"),

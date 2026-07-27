@@ -95,6 +95,9 @@
   currency, period, and tax basis separate, while missing salary values remain SQL `NULL`.
 - Only analytics location and occupation dimensions use the deterministic surrogate key `-1` for
   unknown. Those members have no operational UUID and do not change the exchange/gold contract.
+- PostgreSQL rejects cross-wired observation/salary/bridge lineage and makes facts and bridges
+  append-only. Taxonomy dimension versions and parents must match their operational entities;
+  calendar attributes are deterministic and immutable; daily salary ranges cannot be inverted.
 
 ### JobPosting
 

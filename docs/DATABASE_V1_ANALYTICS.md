@@ -25,7 +25,10 @@ surrogate keys and Type 1 descriptive updates.
 `fact_salary_observations` has one row per `history.observation_salaries` row. Unique history IDs
 make repeated fact loads idempotent. The location, occupation, and skill bridges likewise have
 one row per matching historical child. Facts and bridges are application-append-only and retain
-their producing refresh run.
+their producing refresh run. PostgreSQL lineage triggers reject any copied job, source, company,
+UTC date, salary, relationship, classification, or dimension identity that disagrees with the
+referenced history row. A reusable trigger rejects UPDATE and DELETE on all five fact/bridge
+tables with SQLSTATE `23514`; it is not attached to dimensions, refresh runs, or aggregates.
 
 The six mutable daily tables use these complete grains:
 
@@ -50,6 +53,12 @@ month with year, or gross with net.
 Only `dim_locations` and `dim_occupations` have deterministic analytics-only unknown rows. Both
 use surrogate key `-1`; their operational UUID columns are `NULL`, so the warehouse never invents
 an operational identity. Other dimension rows map to real operational records.
+Occupation and skill rows must match their operational taxonomy version ID, release string, and
+parent. Date attributes are derived deterministically from `calendar_date`, and seeded date rows
+are immutable. A running refresh must have a start timestamp.
+
+Daily salary checks also preserve range direction: each average or median minimum must be no
+greater than its matching maximum when both are present.
 
 ## Access and lifecycle
 

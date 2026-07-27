@@ -11,6 +11,32 @@ depends_on = None
 def upgrade() -> None:
     op.execute("CREATE SCHEMA IF NOT EXISTS analytics")
     op.execute("REVOKE ALL ON SCHEMA analytics FROM PUBLIC")
+    op.execute(
+        """
+        CREATE FUNCTION analytics.prevent_append_only_mutation()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            RAISE EXCEPTION 'analytics.% is append-only', TG_TABLE_NAME
+                USING ERRCODE = '23514';
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.prevent_date_dimension_mutation()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            RAISE EXCEPTION 'analytics.dim_dates is immutable'
+                USING ERRCODE = '23514';
+        END;
+        $$
+        """
+    )
 
     op.execute(
         """
@@ -65,7 +91,9 @@ def upgrade() -> None:
                     (started_at IS NOT NULL AND finished_at >= started_at)),
             CONSTRAINT ck_refresh_runs__terminal_timestamps CHECK
                 (status NOT IN ('succeeded','partially_succeeded','failed','cancelled')
-                 OR (started_at IS NOT NULL AND finished_at IS NOT NULL))
+                 OR (started_at IS NOT NULL AND finished_at IS NOT NULL)),
+            CONSTRAINT ck_refresh_runs__running_started CHECK
+                (status != 'running' OR started_at IS NOT NULL)
         )
         """
     )
@@ -112,7 +140,25 @@ def upgrade() -> None:
             CONSTRAINT ck_dim_dates__parts CHECK
                 (quarter BETWEEN 1 AND 4 AND month BETWEEN 1 AND 12
                  AND week_of_year BETWEEN 1 AND 53 AND day_of_month BETWEEN 1 AND 31
-                 AND day_of_week BETWEEN 1 AND 7)
+                 AND day_of_week BETWEEN 1 AND 7),
+            CONSTRAINT ck_dim_dates__derived_fields CHECK
+                (year = extract(year FROM calendar_date)::smallint
+                 AND quarter = extract(quarter FROM calendar_date)::smallint
+                 AND month = extract(month FROM calendar_date)::smallint
+                 AND month_name = trim(to_char(calendar_date, 'Month'))
+                 AND week_of_year = extract(week FROM calendar_date)::smallint
+                 AND day_of_month = extract(day FROM calendar_date)::smallint
+                 AND day_of_week = extract(isodow FROM calendar_date)::smallint
+                 AND day_name = trim(to_char(calendar_date, 'Day'))
+                 AND is_weekend = (extract(isodow FROM calendar_date) IN (6, 7))
+                 AND month_start_date = date_trunc('month', calendar_date)::date
+                 AND month_end_date =
+                     (date_trunc('month', calendar_date)
+                      + interval '1 month - 1 day')::date
+                 AND quarter_start_date = date_trunc('quarter', calendar_date)::date
+                 AND quarter_end_date =
+                     (date_trunc('quarter', calendar_date)
+                      + interval '3 months - 1 day')::date)
         )
         """
     )
@@ -144,6 +190,13 @@ def upgrade() -> None:
             '2035-12-31'::date,
             interval '1 day'
         ) AS generated(day_value)
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_dim_dates__immutable
+        BEFORE UPDATE OR DELETE ON analytics.dim_dates
+        FOR EACH ROW EXECUTE FUNCTION analytics.prevent_date_dimension_mutation()
         """
     )
 
@@ -296,6 +349,47 @@ def upgrade() -> None:
         "CREATE INDEX ix_dim_occupations__taxonomy_version_id "
         "ON analytics.dim_occupations (taxonomy_version_id)"
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_occupation_dimension_identity()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NEW.occupation_key = -1 THEN
+                IF NEW.occupation_id IS NOT NULL OR NEW.taxonomy_version_id IS NOT NULL
+                   OR NEW.parent_occupation_id IS NOT NULL THEN
+                    RAISE EXCEPTION 'unknown occupation cannot have operational identity'
+                        USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM taxonomy.occupations AS occupation
+                JOIN taxonomy.taxonomy_versions AS taxonomy_version
+                  ON taxonomy_version.id = occupation.taxonomy_version_id
+                WHERE occupation.id = NEW.occupation_id
+                  AND occupation.taxonomy_version_id = NEW.taxonomy_version_id
+                  AND taxonomy_version.version = NEW.taxonomy_version
+                  AND occupation.parent_id IS NOT DISTINCT FROM NEW.parent_occupation_id
+            ) THEN
+                RAISE EXCEPTION 'analytics occupation identity does not match taxonomy'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_dim_occupations__validate_identity
+        BEFORE INSERT OR UPDATE ON analytics.dim_occupations
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_occupation_dimension_identity()
+        """
+    )
 
     op.execute(
         """
@@ -327,6 +421,38 @@ def upgrade() -> None:
     op.execute("CREATE INDEX ix_dim_skills__skill_type ON analytics.dim_skills (skill_type)")
     op.execute(
         "CREATE INDEX ix_dim_skills__normalized_name ON analytics.dim_skills (normalized_name)"
+    )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_skill_dimension_identity()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM taxonomy.skills AS skill
+                JOIN taxonomy.taxonomy_versions AS taxonomy_version
+                  ON taxonomy_version.id = skill.taxonomy_version_id
+                WHERE skill.id = NEW.skill_id
+                  AND skill.taxonomy_version_id = NEW.taxonomy_version_id
+                  AND taxonomy_version.version = NEW.taxonomy_version
+                  AND skill.parent_id IS NOT DISTINCT FROM NEW.parent_skill_id
+            ) THEN
+                RAISE EXCEPTION 'analytics skill identity does not match taxonomy'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_dim_skills__validate_identity
+        BEFORE INSERT OR UPDATE ON analytics.dim_skills
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_skill_dimension_identity()
+        """
     )
 
     op.execute(
@@ -425,6 +551,71 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_fact_job_observations__refresh_run_id "
         "ON analytics.fact_job_observations (refresh_run_id)"
+    )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_job_fact_lineage()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM history.job_observations AS observation
+                JOIN analytics.dim_sources AS source
+                  ON source.source_key = NEW.source_key
+                 AND source.source_id = observation.source_id
+                WHERE observation.id = NEW.observation_id
+                  AND observation.job_posting_id = NEW.job_posting_id
+                  AND (
+                      (NEW.company_key IS NULL AND observation.company_id IS NULL)
+                      OR EXISTS (
+                          SELECT 1 FROM analytics.dim_companies AS company
+                          WHERE company.company_key = NEW.company_key
+                            AND company.company_id = observation.company_id
+                      )
+                  )
+                  AND NEW.observed_date_key =
+                      to_char((observation.observed_at AT TIME ZONE 'UTC')::date,
+                              'YYYYMMDD')::integer
+                  AND NEW.posted_date_key IS NOT DISTINCT FROM
+                      CASE WHEN observation.posted_at IS NULL THEN NULL
+                           ELSE to_char((observation.posted_at AT TIME ZONE 'UTC')::date,
+                                        'YYYYMMDD')::integer END
+                  AND NEW.expires_date_key IS NOT DISTINCT FROM
+                      CASE WHEN observation.expires_at IS NULL THEN NULL
+                           ELSE to_char((observation.expires_at AT TIME ZONE 'UTC')::date,
+                                        'YYYYMMDD')::integer END
+                  AND NEW.previous_observation_id IS NOT DISTINCT FROM
+                      observation.previous_observation_id
+                  AND NEW.observation_reason = observation.observation_reason
+                  AND NEW.status = observation.status
+                  AND NEW.employment_type_code IS NOT DISTINCT FROM
+                      observation.employment_type_code
+                  AND NEW.seniority_level_code IS NOT DISTINCT FROM
+                      observation.seniority_level_code
+                  AND NEW.work_mode IS NOT DISTINCT FROM observation.work_mode
+                  AND NEW.experience_min_years IS NOT DISTINCT FROM
+                      observation.experience_min_years
+                  AND NEW.experience_max_years IS NOT DISTINCT FROM
+                      observation.experience_max_years
+                  AND NEW.canonical_hash = observation.canonical_hash
+                  AND NEW.normalization_version = observation.normalization_version
+            ) THEN
+                RAISE EXCEPTION 'analytics job fact does not match history observation'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_fact_job_observations__validate_lineage
+        BEFORE INSERT OR UPDATE ON analytics.fact_job_observations
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_job_fact_lineage()
+        """
     )
 
     op.execute(
@@ -535,6 +726,61 @@ def upgrade() -> None:
         "CREATE INDEX ix_fact_salary_observations__refresh_run_id "
         "ON analytics.fact_salary_observations (refresh_run_id)"
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_salary_fact_lineage()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM history.observation_salaries AS salary
+                JOIN analytics.fact_job_observations AS job_fact
+                  ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
+                 AND job_fact.observation_id = NEW.observation_id
+                WHERE salary.id = NEW.observation_salary_id
+                  AND salary.observation_id = NEW.observation_id
+                  AND NEW.source_key = job_fact.source_key
+                  AND NEW.company_key IS NOT DISTINCT FROM job_fact.company_key
+                  AND NEW.observed_date_key = job_fact.observed_date_key
+                  AND NEW.amount_min IS NOT DISTINCT FROM salary.amount_min
+                  AND NEW.amount_max IS NOT DISTINCT FROM salary.amount_max
+                  AND NEW.amount_exact IS NOT DISTINCT FROM salary.amount_exact
+                  AND NEW.currency IS NOT DISTINCT FROM salary.currency
+                  AND NEW.period IS NOT DISTINCT FROM salary.period
+                  AND NEW.compensation_type = salary.compensation_type
+                  AND NEW.tax_basis = salary.tax_basis
+                  AND NEW.is_disclosed = salary.is_disclosed
+                  AND NEW.is_negotiable = salary.is_negotiable
+                  AND NEW.is_estimated = salary.is_estimated
+                  AND NEW.normalized_monthly_min IS NOT DISTINCT FROM
+                      salary.normalized_monthly_min
+                  AND NEW.normalized_monthly_max IS NOT DISTINCT FROM
+                      salary.normalized_monthly_max
+                  AND NEW.normalized_annual_min IS NOT DISTINCT FROM
+                      salary.normalized_annual_min
+                  AND NEW.normalized_annual_max IS NOT DISTINCT FROM
+                      salary.normalized_annual_max
+                  AND NEW.fx_rate IS NOT DISTINCT FROM salary.fx_rate
+                  AND NEW.fx_rate_date IS NOT DISTINCT FROM salary.fx_rate_date
+                  AND NEW.confidence IS NOT DISTINCT FROM salary.confidence
+            ) THEN
+                RAISE EXCEPTION 'analytics salary fact does not match history salary'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_fact_salary_observations__validate_lineage
+        BEFORE INSERT OR UPDATE ON analytics.fact_salary_observations
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_salary_fact_lineage()
+        """
+    )
 
     op.execute(
         """
@@ -576,6 +822,44 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_bridge_job_observation_locations__location_key "
         "ON analytics.bridge_job_observation_locations (location_key)"
+    )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_bridge_location_lineage()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM history.observation_locations AS location
+                JOIN analytics.fact_job_observations AS job_fact
+                  ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
+                 AND job_fact.observation_id = location.observation_id
+                JOIN analytics.dim_locations AS dimension
+                  ON dimension.location_key = NEW.location_key
+                 AND dimension.location_id = location.location_id
+                WHERE location.id = NEW.observation_location_id
+                  AND NEW.relationship_type = location.relationship_type
+                  AND NEW.is_primary = location.is_primary
+                  AND NEW.is_remote = location.is_remote
+                  AND NEW.remote_scope IS NOT DISTINCT FROM location.remote_scope
+                  AND NEW.confidence IS NOT DISTINCT FROM location.confidence
+            ) THEN
+                RAISE EXCEPTION 'analytics location bridge does not match history'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_bridge_locations__validate_lineage
+        BEFORE INSERT OR UPDATE ON analytics.bridge_job_observation_locations
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_bridge_location_lineage()
+        """
     )
 
     op.execute(
@@ -621,6 +905,45 @@ def upgrade() -> None:
         "CREATE INDEX ix_bridge_job_observation_occupations__occupation_key "
         "ON analytics.bridge_job_observation_occupations (occupation_key)"
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_bridge_occupation_lineage()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM history.observation_occupations AS occupation
+                JOIN analytics.fact_job_observations AS job_fact
+                  ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
+                 AND job_fact.observation_id = occupation.observation_id
+                JOIN analytics.dim_occupations AS dimension
+                  ON dimension.occupation_key = NEW.occupation_key
+                 AND dimension.occupation_id = occupation.occupation_id
+                WHERE occupation.id = NEW.observation_occupation_id
+                  AND NEW.is_primary = occupation.is_primary
+                  AND NEW.classification_method IS NOT DISTINCT FROM
+                      occupation.classification_method
+                  AND NEW.classifier_version IS NOT DISTINCT FROM
+                      occupation.classifier_version
+                  AND NEW.confidence IS NOT DISTINCT FROM occupation.confidence
+            ) THEN
+                RAISE EXCEPTION 'analytics occupation bridge does not match history'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_bridge_occupations__validate_lineage
+        BEFORE INSERT OR UPDATE ON analytics.bridge_job_observation_occupations
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_bridge_occupation_lineage()
+        """
+    )
 
     op.execute(
         """
@@ -660,6 +983,56 @@ def upgrade() -> None:
         "CREATE INDEX ix_bridge_job_observation_skills__skill_key "
         "ON analytics.bridge_job_observation_skills (skill_key)"
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.validate_bridge_skill_lineage()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM history.observation_skills AS skill
+                JOIN analytics.fact_job_observations AS job_fact
+                  ON job_fact.job_observation_fact_id = NEW.job_observation_fact_id
+                 AND job_fact.observation_id = skill.observation_id
+                JOIN analytics.dim_skills AS dimension
+                  ON dimension.skill_key = NEW.skill_key
+                 AND dimension.skill_id = skill.skill_id
+                WHERE skill.id = NEW.observation_skill_id
+                  AND NEW.requirement_type = skill.requirement_type
+                  AND NEW.confidence IS NOT DISTINCT FROM skill.confidence
+            ) THEN
+                RAISE EXCEPTION 'analytics skill bridge does not match history'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_bridge_skills__validate_lineage
+        BEFORE INSERT OR UPDATE ON analytics.bridge_job_observation_skills
+        FOR EACH ROW EXECUTE FUNCTION analytics.validate_bridge_skill_lineage()
+        """
+    )
+
+    for table_name in (
+        "fact_job_observations",
+        "fact_salary_observations",
+        "bridge_job_observation_locations",
+        "bridge_job_observation_occupations",
+        "bridge_job_observation_skills",
+    ):
+        op.execute(
+            f"""
+            CREATE TRIGGER trg_{table_name}__append_only
+            BEFORE UPDATE OR DELETE ON analytics.{table_name}
+            FOR EACH ROW EXECUTE FUNCTION analytics.prevent_append_only_mutation()
+            """
+        )
 
     op.execute(
         """
@@ -965,6 +1338,21 @@ def upgrade() -> None:
                       OR normalized_annual_min_median >= 0)
                  AND (normalized_annual_max_median IS NULL
                       OR normalized_annual_max_median >= 0)),
+            CONSTRAINT ck_daily_salary_metrics__ranges CHECK
+                ((amount_min_average IS NULL OR amount_max_average IS NULL
+                  OR amount_min_average <= amount_max_average)
+                 AND (normalized_monthly_min_average IS NULL
+                      OR normalized_monthly_max_average IS NULL
+                      OR normalized_monthly_min_average <= normalized_monthly_max_average)
+                 AND (normalized_annual_min_average IS NULL
+                      OR normalized_annual_max_average IS NULL
+                      OR normalized_annual_min_average <= normalized_annual_max_average)
+                 AND (normalized_monthly_min_median IS NULL
+                      OR normalized_monthly_max_median IS NULL
+                      OR normalized_monthly_min_median <= normalized_monthly_max_median)
+                 AND (normalized_annual_min_median IS NULL
+                      OR normalized_annual_max_median IS NULL
+                      OR normalized_annual_min_median <= normalized_annual_max_median)),
             CONSTRAINT ck_daily_salary_metrics__calculation_version CHECK
                 (length(trim(calculation_version)) > 0)
         )
@@ -995,4 +1383,13 @@ def downgrade() -> None:
     op.execute("DROP TABLE analytics.dim_sources")
     op.execute("DROP TABLE analytics.dim_dates")
     op.execute("DROP TABLE analytics.refresh_runs")
+    op.execute("DROP FUNCTION analytics.validate_bridge_skill_lineage()")
+    op.execute("DROP FUNCTION analytics.validate_bridge_occupation_lineage()")
+    op.execute("DROP FUNCTION analytics.validate_bridge_location_lineage()")
+    op.execute("DROP FUNCTION analytics.validate_salary_fact_lineage()")
+    op.execute("DROP FUNCTION analytics.validate_job_fact_lineage()")
+    op.execute("DROP FUNCTION analytics.validate_skill_dimension_identity()")
+    op.execute("DROP FUNCTION analytics.validate_occupation_dimension_identity()")
+    op.execute("DROP FUNCTION analytics.prevent_date_dimension_mutation()")
+    op.execute("DROP FUNCTION analytics.prevent_append_only_mutation()")
     op.execute("DROP SCHEMA analytics")
