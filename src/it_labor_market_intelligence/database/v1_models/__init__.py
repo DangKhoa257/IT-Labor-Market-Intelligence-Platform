@@ -1,5 +1,25 @@
-"""Schema-qualified ORM models for Database V1 migrations 001 through 004."""
+"""Schema-qualified ORM models for Database V1 migrations 001 through 005."""
 
+from .analytics import (
+    AnalyticsRefreshRun,
+    BridgeJobObservationLocation,
+    BridgeJobObservationOccupation,
+    BridgeJobObservationSkill,
+    DailyCompanyHiring,
+    DailyLocationDemand,
+    DailyMarketMetric,
+    DailyOccupationDemand,
+    DailySalaryMetric,
+    DailySkillDemand,
+    DimCompany,
+    DimDate,
+    DimLocation,
+    DimOccupation,
+    DimSkill,
+    DimSource,
+    FactJobObservation,
+    FactSalaryObservation,
+)
 from .base import V1Base
 from .core import (
     Company,
@@ -56,8 +76,12 @@ from .taxonomy import (
 )
 
 __all__ = [
+    "AnalyticsRefreshRun",
     "AuditEvent",
     "BackgroundJob",
+    "BridgeJobObservationLocation",
+    "BridgeJobObservationOccupation",
+    "BridgeJobObservationSkill",
     "Company",
     "CompanyAlias",
     "CompanyDomain",
@@ -66,6 +90,18 @@ __all__ = [
     "CrawlRun",
     "CrawlTask",
     "DataQualityIssue",
+    "DailyCompanyHiring",
+    "DailyLocationDemand",
+    "DailyMarketMetric",
+    "DailyOccupationDemand",
+    "DailySalaryMetric",
+    "DailySkillDemand",
+    "DimCompany",
+    "DimDate",
+    "DimLocation",
+    "DimOccupation",
+    "DimSkill",
+    "DimSource",
     "DuplicateCandidate",
     "DuplicateCluster",
     "DuplicateClusterMember",
@@ -73,6 +109,8 @@ __all__ = [
     "ExtractionRun",
     "FetchEvent",
     "FieldEvidence",
+    "FactJobObservation",
+    "FactSalaryObservation",
     "EmploymentType",
     "JobPostingDescription",
     "JobPostingLocation",

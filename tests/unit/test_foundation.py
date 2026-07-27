@@ -17,6 +17,7 @@ DOCUMENTS = (
     REPOSITORY_ROOT / "docs" / "ARCHITECTURE.md",
     REPOSITORY_ROOT / "docs" / "BENCHMARK_PLAN.md",
     REPOSITORY_ROOT / "docs" / "DATABASE_V1_HISTORY_QUALITY.md",
+    REPOSITORY_ROOT / "docs" / "DATABASE_V1_ANALYTICS.md",
     REPOSITORY_ROOT / "datasets" / "gold" / "ANNOTATION_GUIDELINES.md",
 )
 GOLD_TEMPLATE = REPOSITORY_ROOT / "datasets" / "gold" / "job_postings_gold_template.csv"
@@ -96,7 +97,7 @@ def test_gold_template_contains_only_marked_examples() -> None:
 def test_migration_003_canonical_contract_is_synchronized() -> None:
     schema_text = (REPOSITORY_ROOT / "docs" / "DATA_SCHEMA.md").read_text(encoding="utf-8")
     core_text = (REPOSITORY_ROOT / "docs" / "DATABASE_V1_CORE.md").read_text(encoding="utf-8")
-    assert "Database V1 Migration 004 compatibility" in schema_text
+    assert "Database V1 Migration 005 compatibility" in schema_text
     for table in (
         "core.job_postings",
         "core.job_posting_locations",
@@ -112,7 +113,7 @@ def test_migration_004_history_quality_contract_is_synchronized() -> None:
     history_text = (REPOSITORY_ROOT / "docs" / "DATABASE_V1_HISTORY_QUALITY.md").read_text(
         encoding="utf-8"
     )
-    assert "Migration 004 compatibility" in schema_text
+    assert "Migration 005 compatibility" in schema_text
     for table in (
         "history.job_observations",
         "history.job_change_events",
@@ -121,3 +122,20 @@ def test_migration_004_history_quality_contract_is_synchronized() -> None:
         "quality.duplicate_clusters",
     ):
         assert table in schema_text or table in history_text
+
+
+def test_migration_005_analytics_contract_is_synchronized() -> None:
+    schema_text = (REPOSITORY_ROOT / "docs" / "DATA_SCHEMA.md").read_text(encoding="utf-8")
+    analytics_text = (REPOSITORY_ROOT / "docs" / "DATABASE_V1_ANALYTICS.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Migration 005 compatibility" in schema_text
+    for table in (
+        "refresh_runs",
+        "dim_dates",
+        "fact_job_observations",
+        "bridge_job_observation_skills",
+        "daily_market_metrics",
+        "daily_salary_metrics",
+    ):
+        assert table in analytics_text
