@@ -115,7 +115,7 @@ class DimSource(V1Base):
     __tablename__ = "dim_sources"
     __table_args__ = {"schema": "analytics"}
     source_key: Mapped[int] = mapped_column(
-        sa.BigInteger, sa.Identity(always=True), primary_key=True
+        sa.BigInteger, sa.Identity(always=False), primary_key=True
     )
     source_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -138,7 +138,7 @@ class DimCompany(V1Base):
     __tablename__ = "dim_companies"
     __table_args__ = {"schema": "analytics"}
     company_key: Mapped[int] = mapped_column(
-        sa.BigInteger, sa.Identity(always=True), primary_key=True
+        sa.BigInteger, sa.Identity(always=False), primary_key=True
     )
     company_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), sa.ForeignKey("core.companies.id", ondelete="RESTRICT"), unique=True
@@ -223,7 +223,7 @@ class DimSkill(V1Base):
     __tablename__ = "dim_skills"
     __table_args__ = {"schema": "analytics"}
     skill_key: Mapped[int] = mapped_column(
-        sa.BigInteger, sa.Identity(always=True), primary_key=True
+        sa.BigInteger, sa.Identity(always=False), primary_key=True
     )
     skill_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), sa.ForeignKey("taxonomy.skills.id", ondelete="RESTRICT"), unique=True

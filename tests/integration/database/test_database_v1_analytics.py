@@ -1624,7 +1624,7 @@ def test_daily_grains_are_separate_rebuildable_and_checked(
                         seniority_level_code, work_mode, active_posting_count,
                         refresh_run_id, calculation_version)
                    VALUES (:date, :source, 'full_time', 'mid', 'remote', 3,
-                           :refresh, 'analytics-test.v2')
+                           :refresh, 'analytics-test.v1')
                    ON CONFLICT (metric_date, source_key, employment_type_code,
                                 seniority_level_code, work_mode)
                    DO UPDATE SET active_posting_count=excluded.active_posting_count,
@@ -1645,7 +1645,7 @@ def test_daily_grains_are_separate_rebuildable_and_checked(
                 ),
                 shared,
             ).one()
-            == (3, "analytics-test.v2")
+            == (3, "analytics-test.v1")
         )
         assert (
             connection.scalar(
