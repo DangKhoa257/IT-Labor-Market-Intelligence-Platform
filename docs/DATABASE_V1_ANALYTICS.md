@@ -35,6 +35,11 @@ exists; child counts count historical skill, occupation, and location rows; firs
 false status/content change flags, and later flags compare the previous observation's status/hash.
 Source-scoped refresh runs must match fact/bridge source lineage; global runs may span sources.
 
+Creating a job fact finalizes its historical child snapshot. Descriptions, locations, salaries,
+skills, and occupations can be inserted before the fact, but PostgreSQL rejects later child
+inserts with SQLSTATE `23514`. Status/change/repost event insertion is unaffected. A correction
+uses a new `history.job_observations` row and its own fact instead of changing the finalized state.
+
 The six mutable daily tables use these complete grains:
 
 - market: UTC date, source, employment type, seniority, and work mode;

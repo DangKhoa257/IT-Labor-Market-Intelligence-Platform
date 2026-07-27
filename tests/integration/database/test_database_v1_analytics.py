@@ -1261,6 +1261,195 @@ def test_fact_idempotency_null_salary_and_bridges(
     )
 
 
+def test_job_fact_finalizes_historical_child_snapshot(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    message = "historical observation snapshot is finalized by analytics fact"
+    post_fact_inserts = (
+        """INSERT INTO history.observation_descriptions
+               (observation_id, description_text, content_hash)
+           VALUES (:observation, 'EXAMPLE_NOT_REAL_DATA late description', :hash)""",
+        """INSERT INTO history.observation_locations
+               (observation_id, location_id, relationship_type)
+           VALUES (:observation, :location, 'other')""",
+        """INSERT INTO history.observation_salaries
+               (observation_id, offer_index, amount_min, currency, period, is_disclosed)
+           VALUES (:observation, 9, 1, 'USD', 'month', true)""",
+        """INSERT INTO history.observation_skills
+               (observation_id, skill_id, requirement_type)
+           VALUES (:observation, :skill, 'mentioned')""",
+        """INSERT INTO history.observation_occupations
+               (observation_id, occupation_id)
+           VALUES (:observation, :occupation)""",
+    )
+    late_values = {
+        "observation": catalog["observation_id"],
+        "hash": "f" * 64,
+        "location": catalog["other_location_id"],
+        "skill": catalog["other_skill_id"],
+        "occupation": catalog["occupation_id"],
+    }
+    for statement in post_fact_inserts:
+        error = _reject_with(engine, statement, late_values, message)
+        assert getattr(error.orig, "sqlstate", None) == "23514"
+
+    with engine.begin() as connection:
+        parser_id = _one(
+            connection,
+            """INSERT INTO ingestion.parser_versions
+                   (source_id, parser_name, version, schema_version)
+               VALUES (:source, 'analytics-correction-parser', '1', 'direct.v1')
+               RETURNING id""",
+            {"source": catalog["source_id"]},
+        )
+        extraction_id = _one(
+            connection,
+            """INSERT INTO ingestion.extraction_runs
+                   (crawl_run_id, fetch_event_id, parser_version_id)
+               VALUES (:crawl, :fetch, :parser) RETURNING id""",
+            {
+                "crawl": catalog["crawl_id"],
+                "fetch": catalog["fetch_id"],
+                "parser": parser_id,
+            },
+        )
+        record_id = _one(
+            connection,
+            """INSERT INTO ingestion.extracted_records
+                   (extraction_run_id, source_id, source_job_id, fetch_event_id,
+                    record_schema_version, direct_payload_json, direct_hash, extracted_at)
+               VALUES (:extraction, :source, 'analytics-job', :fetch, 'direct.v1',
+                       '{}'::jsonb, :hash, '2026-01-19T08:01:00Z') RETURNING id""",
+            {
+                "extraction": extraction_id,
+                "source": catalog["source_id"],
+                "fetch": catalog["fetch_id"],
+                "hash": "e" * 64,
+            },
+        )
+        corrected_observation = _one(
+            connection,
+            """INSERT INTO history.job_observations
+                   (job_posting_id, source_id, source_job_id, extracted_record_id,
+                    crawl_run_id, previous_observation_id, observation_reason, observed_at,
+                    canonical_hash, status, source_url, title_raw, company_id,
+                    employment_type_code, seniority_level_code, work_mode,
+                    canonical_payload_json, normalization_version)
+               VALUES (:job, :source, 'analytics-job', :record, :crawl, :previous,
+                       'manual_correction', '2026-01-19T08:00:00Z', :hash, 'active',
+                       'https://example.test/jobs/analytics',
+                       'EXAMPLE_NOT_REAL_DATA Engineer corrected', :company,
+                       'full_time', 'mid', 'remote', '{}'::jsonb, 'analytics.v1')
+               RETURNING id""",
+            {
+                "job": catalog["job_id"],
+                "source": catalog["source_id"],
+                "record": record_id,
+                "crawl": catalog["crawl_id"],
+                "previous": catalog["observation_id"],
+                "hash": "e" * 64,
+                "company": catalog["company_id"],
+            },
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_descriptions
+                       (observation_id, description_text, content_hash)
+                   VALUES (:observation, 'EXAMPLE_NOT_REAL_DATA corrected description',
+                           :hash)"""
+            ),
+            {"observation": corrected_observation, "hash": "e" * 64},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_locations
+                       (observation_id, location_id, relationship_type, is_primary)
+                   VALUES (:observation, :location, 'workplace', true)"""
+            ),
+            {"observation": corrected_observation, "location": catalog["location_id"]},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_salaries
+                       (observation_id, amount_min, currency, period, is_disclosed)
+                   VALUES (:observation, 3000, 'USD', 'month', true)"""
+            ),
+            {"observation": corrected_observation},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_skills
+                       (observation_id, skill_id, requirement_type)
+                   VALUES (:observation, :skill, 'required')"""
+            ),
+            {"observation": corrected_observation, "skill": catalog["other_skill_id"]},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_occupations
+                       (observation_id, occupation_id, is_primary)
+                   VALUES (:observation, :occupation, true)"""
+            ),
+            {"observation": corrected_observation, "occupation": catalog["occupation_id"]},
+        )
+        corrected_fact = _one(
+            connection,
+            """INSERT INTO analytics.fact_job_observations
+                   (observation_id, job_posting_id, source_key, company_key,
+                    observed_date_key, previous_observation_id, observation_reason, status,
+                    employment_type_code, seniority_level_code, work_mode,
+                    salary_disclosed, skill_count, occupation_count, location_count,
+                    is_first_observation, is_status_change, is_content_change,
+                    canonical_hash, normalization_version, refresh_run_id)
+               VALUES (:observation, :job, :source, :company, 20260119, :previous,
+                       'manual_correction', 'active', 'full_time', 'mid', 'remote', true,
+                       1, 1, 1, false, false, true, :hash, 'analytics.v1', :refresh)
+               RETURNING job_observation_fact_id""",
+            {
+                "observation": corrected_observation,
+                "job": catalog["job_id"],
+                "source": catalog["source_key"],
+                "company": catalog["company_key"],
+                "previous": catalog["observation_id"],
+                "hash": "e" * 64,
+                "refresh": catalog["refresh_id"],
+            },
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.job_status_events
+                       (job_posting_id, observation_id, from_status, to_status,
+                        event_type, event_at)
+                   VALUES (:job, :observation, 'active', 'closed',
+                           'manual_correction', '2026-01-19T09:00:00Z')"""
+            ),
+            {"job": catalog["job_id"], "observation": corrected_observation},
+        )
+        assert (
+            connection.execute(
+                sa.text(
+                    """SELECT salary_disclosed, skill_count, occupation_count, location_count,
+                          is_status_change, is_content_change
+                   FROM analytics.fact_job_observations
+                   WHERE job_observation_fact_id=:fact"""
+                ),
+                {"fact": corrected_fact},
+            ).one()
+            == (True, 1, 1, 1, False, True)
+        )
+        assert (
+            connection.execute(
+                sa.text(
+                    """SELECT salary_disclosed, skill_count, occupation_count, location_count
+                   FROM analytics.fact_job_observations
+                   WHERE job_observation_fact_id=:fact"""
+                ),
+                {"fact": catalog["fact_id"]},
+            ).one()
+            == (True, 2, 2, 1)
+        )
+
+
 def test_job_fact_rejects_every_cross_wired_field(
     engine: sa.Engine, catalog: dict[str, object]
 ) -> None:
@@ -1784,6 +1973,17 @@ def test_zz_downgrade_removes_only_analytics_and_reupgrade(engine: sa.Engine) ->
         assert "job_observations" in inspector.get_table_names(schema="history")
         assert "job_postings" in inspector.get_table_names(schema="core")
         assert "sources" in inspector.get_table_names(schema="ingestion")
+        with check_engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    sa.text(
+                        """SELECT count(*) FROM information_schema.triggers
+                       WHERE trigger_schema='history'
+                         AND trigger_name LIKE '%analytics_finalized'"""
+                    )
+                )
+                == 0
+            )
     finally:
         check_engine.dispose()
     command.upgrade(config, "head")
@@ -1796,6 +1996,17 @@ def test_zz_downgrade_removes_only_analytics_and_reupgrade(engine: sa.Engine) ->
                     sa.text("SELECT count(*) FROM analytics.dim_locations WHERE location_key=-1")
                 )
                 == 1
+            )
+            assert (
+                connection.scalar(
+                    sa.text(
+                        """SELECT count(DISTINCT event_object_table)
+                       FROM information_schema.triggers
+                       WHERE trigger_schema='history'
+                         AND trigger_name LIKE '%analytics_finalized'"""
+                    )
+                )
+                == 5
             )
             assert (
                 connection.scalar(

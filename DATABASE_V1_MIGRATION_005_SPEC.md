@@ -396,6 +396,11 @@ hash with the previous observation. UPDATE and DELETE are rejected with SQLSTATE
 When a refresh run is source-scoped, its source must match the fact's source. Global runs with
 NULL source may process multiple sources.
 
+Creating a job fact finalizes that historical observation snapshot. PostgreSQL BEFORE INSERT
+triggers on descriptions, locations, salaries, skills, and occupations reject additional child
+rows with SQLSTATE `23514` once a fact exists. Child snapshot rows may be loaded before the fact;
+status/change/repost events remain unaffected. Corrections require a new observation and fact.
+
 ---
 
 ## 6.2 `analytics.fact_salary_observations`
@@ -724,6 +729,9 @@ Upgrade order:
 10. indexes.
 
 Downgrade reverses that order and drops only `analytics`.
+
+Before dropping analytics tables/functions/schema, downgrade explicitly removes the five
+cross-schema finalization triggers from the Migration 004 history child tables.
 
 Migration 001–004 schemas and data must remain untouched.
 

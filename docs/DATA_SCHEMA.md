@@ -100,6 +100,9 @@
   calendar attributes are deterministic and immutable; daily salary ranges cannot be inverted.
   Fact change flags/counts follow exact history-child definitions, and source-scoped refresh
   source/version lineage cannot be reassigned after reference.
+- Creating an analytics job fact finalizes that observation's description/location/salary/skill/
+  occupation snapshot against later inserts. Corrections create a new historical observation;
+  status, change, and repost events remain unaffected.
 
 ### JobPosting
 

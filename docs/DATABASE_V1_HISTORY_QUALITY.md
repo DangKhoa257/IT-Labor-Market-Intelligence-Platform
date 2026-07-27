@@ -88,3 +88,7 @@ the extracted-record source-identity constraint, remain intact. The next planned
 Migration 005 implements the separately reviewed analytics warehouse described in
 [DATABASE_V1_ANALYTICS.md](DATABASE_V1_ANALYTICS.md). It reads immutable observations without
 changing the history/quality ownership and retention rules documented here.
+Once Migration 005 creates an analytics job fact, cross-schema triggers finalize that observation's
+description, location, salary, skill, and occupation snapshot against further inserts. Event tables
+remain independent; corrections use a new observation. Migration 005 downgrade removes those
+triggers before removing its analytics function and schema.

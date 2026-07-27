@@ -715,6 +715,41 @@ def upgrade() -> None:
         FOR EACH ROW EXECUTE FUNCTION analytics.validate_job_fact_lineage()
         """
     )
+    op.execute(
+        """
+        CREATE FUNCTION analytics.prevent_finalized_observation_child_insert()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM analytics.fact_job_observations
+                WHERE observation_id = NEW.observation_id
+            ) THEN
+                RAISE EXCEPTION 'historical observation snapshot is finalized by analytics fact'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    for table_name in (
+        "observation_descriptions",
+        "observation_locations",
+        "observation_salaries",
+        "observation_skills",
+        "observation_occupations",
+    ):
+        op.execute(
+            f"""
+            CREATE TRIGGER trg_{table_name}__analytics_finalized
+            BEFORE INSERT ON history.{table_name}
+            FOR EACH ROW
+            EXECUTE FUNCTION analytics.prevent_finalized_observation_child_insert()
+            """
+        )
 
     op.execute(
         """
@@ -1583,6 +1618,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    for table_name in (
+        "observation_descriptions",
+        "observation_locations",
+        "observation_salaries",
+        "observation_skills",
+        "observation_occupations",
+    ):
+        op.execute(f"DROP TRIGGER trg_{table_name}__analytics_finalized ON history.{table_name}")
     op.execute("DROP TABLE analytics.daily_salary_metrics")
     op.execute("DROP TABLE analytics.daily_skill_demand")
     op.execute("DROP TABLE analytics.daily_occupation_demand")
@@ -1606,6 +1649,7 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION analytics.validate_bridge_location_lineage()")
     op.execute("DROP FUNCTION analytics.validate_salary_fact_lineage()")
     op.execute("DROP FUNCTION analytics.validate_job_fact_lineage()")
+    op.execute("DROP FUNCTION analytics.prevent_finalized_observation_child_insert()")
     op.execute("DROP FUNCTION analytics.prevent_refresh_lineage_mutation()")
     op.execute("DROP FUNCTION analytics.validate_daily_refresh_lineage()")
     op.execute("DROP FUNCTION analytics.validate_skill_dimension_identity()")
