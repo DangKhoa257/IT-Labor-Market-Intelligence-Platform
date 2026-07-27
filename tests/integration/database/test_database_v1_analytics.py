@@ -165,7 +165,8 @@ def catalog(engine: sa.Engine) -> dict[str, object]:
                 connection,
                 """INSERT INTO core.companies
                        (canonical_name, normalized_name, headquarters_location_id)
-                   VALUES ('EXAMPLE_NOT_REAL_DATA Company', 'example company', :location)
+                   VALUES ('EXAMPLE_NOT_REAL_DATA Analytics Company',
+                           'analytics example company', :location)
                    RETURNING id""",
                 {"location": location_id},
             ),
