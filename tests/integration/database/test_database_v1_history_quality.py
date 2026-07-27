@@ -223,6 +223,12 @@ def catalog(engine: sa.Engine) -> dict[str, UUID | int]:
                VALUES (:source, 'test', 'test') RETURNING id""",
             {"source": source_a},
         )
+        wrong_source_crawl_run = _uuid(
+            connection,
+            """INSERT INTO ingestion.crawl_runs (source_id, run_type, trigger_type)
+               VALUES (:source, 'test', 'test') RETURNING id""",
+            {"source": source_b},
+        )
         records = {
             "record_a1": _record(connection, source_a, parser_a, "history-job-a", "a1"),
             "record_a2": _record(connection, source_a, parser_a, "history-job-a", "b2"),
@@ -331,6 +337,7 @@ def catalog(engine: sa.Engine) -> dict[str, UUID | int]:
         "source_b": source_b,
         "source_context": source_context,
         "lineage_crawl_run": lineage_crawl_run,
+        "wrong_source_crawl_run": wrong_source_crawl_run,
         "job_a": job_a,
         "job_b": job_b,
         "observation_a1": observation_a1,
@@ -397,6 +404,13 @@ def test_observation_identity_lineage_hashes_and_current_pointer(
             )
         )
         assert hashes == ["a" * 64, "b" * 64, "a" * 64]
+        assert (
+            connection.scalar(
+                sa.text("SELECT crawl_run_id FROM history.job_observations WHERE id=:observation"),
+                {"observation": catalog["observation_a1"]},
+            )
+            == catalog["lineage_crawl_run"]
+        )
         connection.execute(
             sa.text(
                 """UPDATE core.job_postings SET current_observation_id=:observation
@@ -511,6 +525,23 @@ def test_observation_identity_lineage_hashes_and_current_pointer(
         engine,
         "DELETE FROM ingestion.crawl_runs WHERE id=:crawl_run",
         {"crawl_run": catalog["lineage_crawl_run"]},
+    )
+    _reject(
+        engine,
+        """INSERT INTO history.job_observations
+               (job_posting_id, source_id, source_job_id, extracted_record_id,
+                crawl_run_id, observation_reason, observed_at, canonical_hash,
+                status, source_url, title_raw, normalization_version)
+           VALUES (:job, :source, 'history-job-a', :record, :crawl_run, 'reprocessed',
+                   now(), :hash, 'active', 'https://example.test/jobs/a',
+                   'EXAMPLE_NOT_REAL_DATA Engineer', 'wrong-crawl-source')""",
+        {
+            "job": catalog["job_a"],
+            "source": catalog["source_a"],
+            "record": catalog["record_a1"],
+            "crawl_run": catalog["wrong_source_crawl_run"],
+            "hash": "a" * 64,
+        },
     )
     with engine.connect() as connection:
         set_null_targets = connection.execute(

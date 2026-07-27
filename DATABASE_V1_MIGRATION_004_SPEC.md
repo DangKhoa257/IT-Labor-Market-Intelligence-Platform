@@ -281,7 +281,7 @@ ON DELETE RESTRICT
 → ingestion.extracted_records(id, source_id, source_job_id)
 ON DELETE RESTRICT
 
-crawl_run_id → ingestion.crawl_runs(id) ON DELETE RESTRICT
+(crawl_run_id, source_id) → ingestion.crawl_runs(id, source_id) ON DELETE RESTRICT
 (previous_observation_id, job_posting_id)
 → history.job_observations(id, job_posting_id) ON DELETE RESTRICT
 company_id → core.companies(id) ON DELETE RESTRICT
@@ -1168,6 +1168,9 @@ Required tests:
 
 - correct source identity accepted;
 - wrong source or source job ID rejected;
+- crawl run from the observation source accepted;
+- crawl run from another source rejected;
+- deleting a referenced crawl run rejected;
 - previous observation from another job rejected;
 - current pointer to another job’s observation rejected;
 - duplicate same job/extracted-record/version rejected;

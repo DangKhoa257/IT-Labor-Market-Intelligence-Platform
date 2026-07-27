@@ -55,6 +55,12 @@ class JobObservation(V1Base):
             name="fk_job_observations__previous_job__job_observations",
             ondelete="RESTRICT",
         ),
+        sa.ForeignKeyConstraint(
+            ("crawl_run_id", "source_id"),
+            ("ingestion.crawl_runs.id", "ingestion.crawl_runs.source_id"),
+            name="fk_job_observations__crawl_source_identity__crawl_runs",
+            ondelete="RESTRICT",
+        ),
         {"schema": "history"},
     )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)
@@ -62,9 +68,7 @@ class JobObservation(V1Base):
     source_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     source_job_id: Mapped[str] = mapped_column(sa.String(255))
     extracted_record_id: Mapped[int] = mapped_column(sa.BigInteger)
-    crawl_run_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), sa.ForeignKey("ingestion.crawl_runs.id", ondelete="RESTRICT")
-    )
+    crawl_run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     previous_observation_id: Mapped[int | None] = mapped_column(sa.BigInteger)
     observation_reason: Mapped[str] = mapped_column(sa.String(30))
     observed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))

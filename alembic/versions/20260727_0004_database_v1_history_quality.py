@@ -180,8 +180,9 @@ def upgrade() -> None:
                 FOREIGN KEY (extracted_record_id, source_id, source_job_id)
                 REFERENCES ingestion.extracted_records(id, source_id, source_job_id)
                 ON DELETE RESTRICT,
-            CONSTRAINT fk_job_observations__crawl_run_id__crawl_runs
-                FOREIGN KEY (crawl_run_id) REFERENCES ingestion.crawl_runs(id) ON DELETE RESTRICT,
+            CONSTRAINT fk_job_observations__crawl_source_identity__crawl_runs
+                FOREIGN KEY (crawl_run_id, source_id)
+                REFERENCES ingestion.crawl_runs(id, source_id) ON DELETE RESTRICT,
             CONSTRAINT fk_job_observations__previous_job__job_observations
                 FOREIGN KEY (previous_observation_id, job_posting_id)
                 REFERENCES history.job_observations(id, job_posting_id) ON DELETE RESTRICT,

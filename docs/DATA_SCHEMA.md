@@ -78,7 +78,7 @@
 
 ### Database V1 Migration 004 history and quality mapping
 
-- `history.job_observations` stores immutable canonical states whose posting identity and extracted-record identity must match; `core.job_postings.current_observation_id` can point only to the same job.
+- `history.job_observations` stores immutable canonical states whose posting, extracted-record, and optional crawl-run source identities must match; `core.job_postings.current_observation_id` can point only to the same job.
 - Canonical hashes are not unique, so A → B → A is valid when each observation has distinct lineage. An unchanged recrawl updates only current-state `last_seen_at`.
 - Observation descriptions, locations, salaries, skills, and occupations are complete immutable snapshots. Status, field-change, and repost events are also append-only.
 - Historical salaries are self-contained and do not reference mutable current salary rows. Description text supports only one-way retention removal to redacted/expired.

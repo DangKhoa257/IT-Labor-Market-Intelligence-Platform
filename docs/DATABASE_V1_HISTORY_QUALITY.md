@@ -23,8 +23,9 @@ It creates exactly these tables:
 `(source_id, source_job_id)` identity. An unchanged successful recrawl updates
 `core.job_postings.last_seen_at` without requiring another observation.
 
-Observation crawl lineage is restrictive: a referenced crawl run cannot be deleted. Historical
-salary snapshots are self-contained and intentionally have no foreign key to mutable current
+Observation crawl lineage is source-consistent and restrictive: a non-null crawl run must belong
+to the observation's source, and a referenced crawl run cannot be deleted. Historical salary
+snapshots are self-contained and intentionally have no foreign key to mutable current
 `core.salary_offers` rows, so replacing or deleting current salary state cannot rewrite or block
 the historical snapshot.
 
