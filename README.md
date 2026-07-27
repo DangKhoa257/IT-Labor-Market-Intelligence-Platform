@@ -81,10 +81,13 @@ alembic current
 uvicorn apps.api.main:app --reload
 ```
 
-Migrations 001–003 create the private Database V1 system, ingestion-lineage, taxonomy, and
-canonical current-state layers. The current API still uses the Phase 3 prototype ORM, and no full
-canonical importer is included. See [DATABASE_V1_FOUNDATION.md](docs/DATABASE_V1_FOUNDATION.md)
-and [DATABASE_V1_CORE.md](docs/DATABASE_V1_CORE.md). Use `alembic downgrade 20260726_0002` to
-remove only Migration 003 and `docker compose down` to stop PostgreSQL.
+Migrations 001–004 create the private Database V1 system, ingestion-lineage, taxonomy, canonical
+current-state, immutable history, and data-quality layers. The current API still uses the Phase 3
+prototype ORM, and no full observation writer or canonical importer is included. See
+[DATABASE_V1_FOUNDATION.md](docs/DATABASE_V1_FOUNDATION.md),
+[DATABASE_V1_CORE.md](docs/DATABASE_V1_CORE.md), and
+[DATABASE_V1_HISTORY_QUALITY.md](docs/DATABASE_V1_HISTORY_QUALITY.md). Use
+`alembic downgrade 20260726_0003` to remove only Migration 004 and `docker compose down` to stop
+PostgreSQL.
 
 Run checks with `python -m pytest`, `python -m ruff check .`, and `python -m ruff format --check .`. See [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md), [API_REFERENCE.md](docs/API_REFERENCE.md), and [DATA_IMPORT_RUNBOOK.md](docs/DATA_IMPORT_RUNBOOK.md).

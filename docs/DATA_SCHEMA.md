@@ -1,6 +1,6 @@
 # Canonical Data Schema
 
-**Phiên bản:** 0.2 (Database V1 Migration 003 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core` và `taxonomy` theo `DATABASE_V1_CORE.md`.
+**Phiên bản:** 0.3 (Database V1 Migration 004 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, và `quality`. Migration 004 không thêm field exchange nên header gold template không đổi.
 
 ## Phân loại provenance
 
@@ -76,6 +76,15 @@
 - `description_raw` maps to the single currently retained description. Historical descriptions and job observations are not part of Migration 003.
 - Every persisted posting retains `source_url`, first/last-seen timestamps, and optional identity-matched lineage to `ingestion.extracted_records`; deleting that record clears only the lineage ID.
 
+### Database V1 Migration 004 history and quality mapping
+
+- `history.job_observations` stores immutable canonical states whose posting, extracted-record, and optional crawl-run source identities must match; `core.job_postings.current_observation_id` can point only to the same job.
+- Canonical hashes are not unique, so A → B → A is valid when each observation has distinct lineage. An unchanged recrawl updates only current-state `last_seen_at`.
+- Observation descriptions, locations, salaries, skills, and occupations are complete immutable snapshots. Status, field-change, and repost events are also append-only.
+- Historical salaries are self-contained and do not reference mutable current salary rows. Description text supports only one-way retention removal to redacted/expired.
+- `quality.field_evidence` preserves immutable direct, normalized, inferred, unavailable, and unverified provenance while allowing controlled reviewer metadata. Quality issues retain mutable review/resolution state and deletion-restricted, source-consistent context.
+- Duplicate candidates and clusters are advisory and never delete or merge source postings.
+
 ### JobPosting
 
 Identity logic lâu dài của một tin tại một nguồn. Khóa đề xuất: internal UUID; unique `(source_id, source_job_id)`. Giữ current canonical state, first/last seen và active; có nhiều `JobSnapshot`. Cross-source duplicates không bị hợp nhất vật lý ở Phase 0.
@@ -110,4 +119,4 @@ Lỗi có cấu trúc liên kết `CrawlRun`, URL/job ID nếu biết, stage, er
 
 ## Chưa quyết định
 
-Migration 003 quyết định PostgreSQL physical types/indexes cho current state, multi-location và versioned taxonomy. Observation history, change/status events, field evidence, cross-source duplicate candidates, analytics và serving vẫn cần quyết định/migration riêng. Không suy diễn rằng current-state row là lịch sử đầy đủ.
+Migration 004 quyết định PostgreSQL storage cho observation history, change/status/repost events, field evidence, quality review và advisory duplicate groups. Analytics, serving, writer/diff automation, lifecycle scheduling và deduplication algorithms vẫn cần task/migration riêng. Không suy diễn rằng current-state row là lịch sử đầy đủ.

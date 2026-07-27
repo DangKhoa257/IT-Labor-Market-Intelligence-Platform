@@ -65,9 +65,15 @@ taxonomy version as its child.
 
 ## Current state versus history
 
-Migration 003 stores only current posting state and one currently retained description. It does
-not record observations, field changes, status events, or historical descriptions. Those belong
-to a separately reviewed Migration 004. Fetch failures still do not imply posting closure.
+Migration 003 stores current posting state and one currently retained description. Migration 004
+adds immutable observations, complete child snapshots, and status/change/repost events in
+`history`; `current_observation_id` points only to an observation for the same posting. An
+unchanged recrawl updates `last_seen_at` without requiring a new observation, and repeated hashes
+such as A → B → A remain valid distinct history. Fetch failures still do not imply posting closure.
+
+Quality review and advisory duplicate groups live in the Migration 004 `quality` schema. They do
+not merge or delete source postings. See
+[DATABASE_V1_HISTORY_QUALITY.md](DATABASE_V1_HISTORY_QUALITY.md).
 
 Alembic migration revisions and extractor versions are independent version systems. Gold examples
 use a generic synthetic extractor version and do not encode `m003` merely because their storage
