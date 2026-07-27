@@ -803,6 +803,49 @@ def test_taxonomy_types_and_parent_versions_are_enforced(
     )
 
 
+def test_taxonomy_version_type_is_immutable(engine: sa.Engine) -> None:
+    with engine.begin() as connection:
+        skill_version = _uuid(
+            connection,
+            """INSERT INTO taxonomy.taxonomy_versions
+                   (taxonomy_type, version, name)
+               VALUES ('skill', 'SYNTHETIC_TEST_DATA.immutable-skill',
+                       'SYNTHETIC_TEST_DATA immutable skill') RETURNING id""",
+            {},
+        )
+        occupation_version = _uuid(
+            connection,
+            """INSERT INTO taxonomy.taxonomy_versions
+                   (taxonomy_type, version, name)
+               VALUES ('occupation', 'SYNTHETIC_TEST_DATA.immutable-occupation',
+                       'SYNTHETIC_TEST_DATA immutable occupation') RETURNING id""",
+            {},
+        )
+        updated = connection.execute(
+            sa.text(
+                """UPDATE taxonomy.taxonomy_versions
+                   SET name='SYNTHETIC_TEST_DATA renamed', status='retired'
+                   WHERE id=:version
+                   RETURNING name, status, taxonomy_type"""
+            ),
+            {"version": skill_version},
+        ).one()
+        assert updated == ("SYNTHETIC_TEST_DATA renamed", "retired", "skill")
+
+    _reject(
+        engine,
+        """UPDATE taxonomy.taxonomy_versions SET taxonomy_type='occupation'
+           WHERE id=:version""",
+        {"version": skill_version},
+    )
+    _reject(
+        engine,
+        """UPDATE taxonomy.taxonomy_versions SET taxonomy_type='skill'
+           WHERE id=:version""",
+        {"version": occupation_version},
+    )
+
+
 def test_occupations_primary_secondary_alias_scope_and_delete_restriction(
     engine: sa.Engine, catalog: dict[str, UUID]
 ) -> None:

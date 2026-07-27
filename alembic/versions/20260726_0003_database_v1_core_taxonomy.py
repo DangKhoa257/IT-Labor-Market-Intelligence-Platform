@@ -73,6 +73,30 @@ def upgrade() -> None:
         """
     )
     op.execute(
+        """
+        CREATE FUNCTION taxonomy.prevent_taxonomy_type_change()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF NEW.taxonomy_type IS DISTINCT FROM OLD.taxonomy_type THEN
+                RAISE EXCEPTION 'taxonomy_type is immutable after insertion'
+                    USING ERRCODE = '23514',
+                          CONSTRAINT = 'ck_taxonomy_versions__type_immutable';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE TRIGGER trg_taxonomy_versions__immutable_type
+        BEFORE UPDATE OF taxonomy_type ON taxonomy.taxonomy_versions
+        FOR EACH ROW EXECUTE FUNCTION taxonomy.prevent_taxonomy_type_change()
+        """
+    )
+    op.execute(
         "CREATE UNIQUE INDEX uq_taxonomy_versions__one_active_type "
         "ON taxonomy.taxonomy_versions (taxonomy_type) WHERE status = 'active'"
     )
@@ -870,6 +894,10 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION taxonomy.enforce_taxonomy_entity_type()")
     op.execute("DROP TABLE taxonomy.seniority_levels")
     op.execute("DROP TABLE taxonomy.employment_types")
+    op.execute(
+        "DROP TRIGGER trg_taxonomy_versions__immutable_type " "ON taxonomy.taxonomy_versions"
+    )
+    op.execute("DROP FUNCTION taxonomy.prevent_taxonomy_type_change()")
     op.execute("DROP TABLE taxonomy.taxonomy_versions")
     op.execute(
         "ALTER TABLE ingestion.extracted_records "

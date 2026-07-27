@@ -158,6 +158,11 @@ valid_to IS NULL OR valid_to > valid_from
 status != 'active' OR valid_from IS NOT NULL
 ```
 
+`taxonomy_type` is immutable after insertion. An explicit PostgreSQL
+`BEFORE UPDATE OF taxonomy_type` trigger must allow an update only when the new type equals the
+old type and otherwise raise a constraint-style error. Other fields remain updateable when their
+ordinary constraints are satisfied.
+
 Only one active version per type:
 
 ```sql
@@ -1061,7 +1066,8 @@ Upgrade order:
 1. Create `taxonomy` and `core` schemas.
 2. Revoke public privileges.
 3. Add the supporting extracted-record source-identity uniqueness.
-4. Create `taxonomy.taxonomy_versions` and the taxonomy-type enforcement function.
+4. Create `taxonomy.taxonomy_versions`, the entity-type enforcement function, and the
+   taxonomy-type immutability function/trigger.
 5. Create and seed `taxonomy.employment_types`.
 6. Create and seed `taxonomy.seniority_levels`.
 7. Create occupations and occupation aliases, including the occupation-type trigger.
@@ -1142,6 +1148,12 @@ Required tests:
 
 - all required employment-type codes exist;
 - all required seniority codes exist.
+
+## Taxonomy versions
+
+- changing a skill taxonomy version to occupation is rejected;
+- changing an occupation taxonomy version to skill is rejected;
+- valid taxonomy-version name or status updates are accepted.
 
 ## Companies
 

@@ -53,7 +53,8 @@ normalization ranges and optional FX rate/date pairs are validated independently
 Occupation and skill releases are registered in `taxonomy.taxonomy_versions`. Canonical codes are
 unique only within a taxonomy version. Aliases may repeat across different skills or occupations,
 while duplicates for the same entity and source scope are rejected. Employment types and
-seniority levels are deterministic reference rows seeded by the migration.
+seniority levels are deterministic reference rows seeded by the migration. A taxonomy version's
+`taxonomy_type` is immutable after insertion, while other fields may be updated when valid.
 
 PostgreSQL triggers require occupations to use occupation taxonomy versions and skills to use
 skill taxonomy versions. Composite self-references require every parent to belong to the same

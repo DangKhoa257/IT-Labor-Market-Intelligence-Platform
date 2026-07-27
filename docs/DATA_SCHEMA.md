@@ -72,7 +72,7 @@
 - Company candidates, aliases, and domains live separately; normalized company names are indexed but are not unique and do not trigger an automatic merge.
 - `location_raw` is retained on the posting while resolved locations are repeatable relations, including remote scope.
 - Flat salary exchange fields are compatibility projections only. Relational salary offers remain separate by component, period, currency, tax basis, disclosure, and estimation state.
-- Occupations and skills must use taxonomy versions of their own type, and each parent must be in the child's version. Assignments retain confidence/method metadata.
+- Occupations and skills must use taxonomy versions of their own type, `taxonomy_type` is immutable after a version is inserted, and each parent must be in the child's version. Assignments retain confidence/method metadata.
 - `description_raw` maps to the single currently retained description. Historical descriptions and job observations are not part of Migration 003.
 - Every persisted posting retains `source_url`, first/last-seen timestamps, and optional identity-matched lineage to `ingestion.extracted_records`; deleting that record clears only the lineage ID.
 
