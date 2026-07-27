@@ -1,4 +1,4 @@
-"""Schema-qualified ORM models for Database V1 migrations 001 through 003."""
+"""Schema-qualified ORM models for Database V1 migrations 001 through 004."""
 
 from .base import V1Base
 from .core import (
@@ -13,6 +13,17 @@ from .core import (
     Location,
     SalaryOffer,
 )
+from .history import (
+    JobChangeEvent,
+    JobObservation,
+    JobRepostEvent,
+    JobStatusEvent,
+    ObservationDescription,
+    ObservationLocation,
+    ObservationOccupation,
+    ObservationSalary,
+    ObservationSkill,
+)
 from .ingestion import (
     CrawlError,
     CrawlRun,
@@ -24,6 +35,14 @@ from .ingestion import (
     RawObject,
     Source,
     SourcePolicy,
+)
+from .quality import (
+    DataQualityIssue,
+    DuplicateCandidate,
+    DuplicateCluster,
+    DuplicateClusterMember,
+    FieldEvidence,
+    ValidationRun,
 )
 from .system import AuditEvent, BackgroundJob, PipelineVersion, RetentionPolicy
 from .taxonomy import (
@@ -46,17 +65,31 @@ __all__ = [
     "CrawlError",
     "CrawlRun",
     "CrawlTask",
+    "DataQualityIssue",
+    "DuplicateCandidate",
+    "DuplicateCluster",
+    "DuplicateClusterMember",
     "ExtractedRecord",
     "ExtractionRun",
     "FetchEvent",
+    "FieldEvidence",
     "EmploymentType",
     "JobPostingDescription",
     "JobPostingLocation",
     "JobPostingOccupation",
     "JobPostingSkill",
+    "JobChangeEvent",
+    "JobObservation",
+    "JobRepostEvent",
+    "JobStatusEvent",
     "Location",
     "Occupation",
     "OccupationAlias",
+    "ObservationDescription",
+    "ObservationLocation",
+    "ObservationOccupation",
+    "ObservationSalary",
+    "ObservationSkill",
     "ParserVersion",
     "PipelineVersion",
     "RawObject",
@@ -68,5 +101,6 @@ __all__ = [
     "Source",
     "SourcePolicy",
     "TaxonomyVersion",
+    "ValidationRun",
     "V1Base",
 ]

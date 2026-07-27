@@ -140,6 +140,9 @@ class CoreJobPosting(V1Base):
     __tablename__ = "job_postings"
     __table_args__ = (
         sa.UniqueConstraint("source_id", "source_job_id", name="uq_job_postings__source_identity"),
+        sa.UniqueConstraint(
+            "id", "source_id", "source_job_id", name="uq_job_postings__id_source_identity"
+        ),
         sa.ForeignKeyConstraint(
             ("latest_extracted_record_id", "source_id", "source_job_id"),
             (
@@ -149,6 +152,17 @@ class CoreJobPosting(V1Base):
             ),
             name="fk_job_postings__latest_extracted_identity__extracted_records",
             ondelete="SET NULL (latest_extracted_record_id)",
+        ),
+        sa.ForeignKeyConstraint(
+            ("current_observation_id", "id"),
+            ("history.job_observations.id", "history.job_observations.job_posting_id"),
+            name="fk_job_postings__current_observation__job_observations",
+            ondelete="SET NULL (current_observation_id)",
+        ),
+        sa.Index(
+            "ix_job_postings__current_observation_id",
+            "current_observation_id",
+            postgresql_where=sa.text("current_observation_id IS NOT NULL"),
         ),
         {"schema": "core"},
     )
@@ -160,6 +174,7 @@ class CoreJobPosting(V1Base):
     )
     source_job_id: Mapped[str] = mapped_column(sa.String(255))
     latest_extracted_record_id: Mapped[int | None] = mapped_column(sa.BigInteger)
+    current_observation_id: Mapped[int | None] = mapped_column(sa.BigInteger)
     company_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), sa.ForeignKey("core.companies.id", ondelete="RESTRICT")
     )
