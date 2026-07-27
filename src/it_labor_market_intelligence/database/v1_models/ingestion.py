@@ -277,7 +277,15 @@ class ExtractionRun(V1Base):
 
 class ExtractedRecord(V1Base):
     __tablename__ = "extracted_records"
-    __table_args__ = {"schema": "ingestion"}
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "id",
+            "source_id",
+            "source_job_id",
+            name="uq_extracted_records__id_source_identity",
+        ),
+        {"schema": "ingestion"},
+    )
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(always=True), primary_key=True)
     extraction_run_id: Mapped[int] = mapped_column(
         sa.BigInteger, sa.ForeignKey("ingestion.extraction_runs.id", ondelete="CASCADE")

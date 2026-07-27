@@ -90,3 +90,17 @@ def test_gold_template_contains_only_marked_examples() -> None:
     assert all(None not in row for row in rows), "A row has more values than the canonical header"
     assert all(row["source"] == "EXAMPLE_NOT_REAL_DATA" for row in rows)
     assert all("EXAMPLE_NOT_REAL_DATA" in row["description_raw"] for row in rows)
+
+
+def test_migration_003_canonical_contract_is_synchronized() -> None:
+    schema_text = (REPOSITORY_ROOT / "docs" / "DATA_SCHEMA.md").read_text(encoding="utf-8")
+    core_text = (REPOSITORY_ROOT / "docs" / "DATABASE_V1_CORE.md").read_text(encoding="utf-8")
+    assert "Migration 003 compatibility" in schema_text
+    for table in (
+        "core.job_postings",
+        "core.job_posting_locations",
+        "core.salary_offers",
+        "core.job_posting_skills",
+        "core.job_posting_occupations",
+    ):
+        assert table in schema_text or table in core_text

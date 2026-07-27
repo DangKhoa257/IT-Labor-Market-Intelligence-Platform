@@ -1,4 +1,4 @@
-"""PostgreSQL 16 integration tests for Database V1 migrations 001 and 002."""
+"""PostgreSQL 16 integration tests for Database V1 migrations 001 through 003."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def test_empty_database_schema_inventory_and_current_revision(engine: sa.Engine)
             sa.text("SELECT extname FROM pg_extension WHERE extname='pgcrypto'")
         )
         assert (
-            connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "20260726_0002"
+            connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "20260726_0003"
         )
 
 

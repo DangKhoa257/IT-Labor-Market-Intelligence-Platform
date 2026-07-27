@@ -1,6 +1,6 @@
 # Canonical Data Schema
 
-**Phiên bản:** 0.1 draft (Phase 0). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV.
+**Phiên bản:** 0.2 (Database V1 Migration 003 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core` và `taxonomy` theo `DATABASE_V1_CORE.md`.
 
 ## Phân loại provenance
 
@@ -21,25 +21,25 @@
 | `title_raw` | string | R | Direct | Chức danh nguyên văn | Nội dung nguồn | trim whitespace, không dịch | Không | Không |
 | `title_normalized` | string | O | Normalized | Chức danh đã chuẩn hóa | `title_raw` | alias/rule được version hóa | Null nếu không đủ chắc chắn | Có, rule-based |
 | `job_category` | enum string | O | Inferred | Nhóm nghề canonical | Title + description | Giá trị trong `JOB_TAXONOMY.md` | `Other/Unclassified` chỉ khi đã review/rule; null nếu chưa xử lý | Có |
-| `company_name` | string | O | Direct | Tên công ty hiển thị | Nội dung nguồn | trim; normalized company identity ở entity `Company` | Null nếu ẩn/thiếu | Không trong field này |
+| `company_name` | string | O | Direct | Tên công ty hiển thị | Nội dung nguồn | trim; lưu vào `company_name_raw`; trạng thái disclosure lưu riêng; không merge company chỉ theo normalized name | Null nếu ẩn/thiếu | Không trong field này |
 | `company_industry` | string | O | Direct | Ngành công ty do nguồn nêu | Nội dung/metadata nguồn | trim; mapping taxonomy để phase sau | Null nếu thiếu | Không |
 | `company_size` | string | O | Direct | Khoảng quy mô nhân sự | Nội dung/metadata nguồn | định dạng range chuẩn khi nguồn nêu rõ | Null nếu thiếu | Không |
 | `location_raw` | string | O | Direct | Địa điểm nguyên văn | Nội dung nguồn | trim only | Null nếu remote/thiếu và không có text | Không |
-| `city` | string | O | Normalized | Tỉnh/thành canonical | `location_raw` | tên hành chính canonical; array chưa hỗ trợ ở v0.1 | Null nếu remote-only, đa địa điểm hoặc mơ hồ | Có, rule-based |
+| `city` | string | O | Normalized | Projection tỉnh/thành cho exchange cũ | `location_raw` | relational storage dùng nhiều `job_posting_locations`; field này chỉ điền khi có đúng một city rõ ràng | Null nếu remote-only, đa địa điểm hoặc mơ hồ | Có, rule-based |
 | `work_mode` | enum: onsite, hybrid, remote | O | Inferred | Hình thức làm việc | Title/location/description | map alias Việt/Anh | Null nếu không nói rõ | Có |
 | `employment_type` | enum: full_time, part_time, contract, internship, temporary, other | O | Normalized | Loại hợp đồng/công việc | Nội dung nguồn | map alias sang enum | Null nếu thiếu | Có, rule-based |
 | `seniority` | enum: intern, fresher, junior, mid, senior, lead, manager, director, executive | O | Inferred | Cấp bậc vai trò | Title + yêu cầu kinh nghiệm/trách nhiệm | rule theo guideline/taxonomy version | Null nếu mơ hồ | Có |
 | `experience_min_years` | number | O | Normalized | Số năm kinh nghiệm tối thiểu | Requirement text | tháng / 12; `0` chỉ khi nêu không yêu cầu | Null nếu không nêu | Có, chỉ parsing |
 | `experience_max_years` | number | O | Normalized | Số năm kinh nghiệm tối đa | Requirement text | tháng / 12; phải >= min | Null nếu range mở/không nêu | Có, chỉ parsing |
 | `salary_raw` | string | O | Direct | Lương nguyên văn | Nội dung nguồn | trim only | Null nếu không có vùng lương | Không |
-| `salary_min` | number | O | Normalized | Cận dưới lương | `salary_raw` | numeric base unit; chưa quy đổi FX | Null nếu thỏa thuận/range mở/parse thất bại | Có, chỉ parsing |
+| `salary_min` | number | O | Normalized | Projection cận dưới lương | `salary_raw` | storage dùng một hoặc nhiều `salary_offers`; không trộn kỳ, currency, tax basis | Null nếu thỏa thuận/range mở/parse thất bại | Có, chỉ parsing |
 | `salary_max` | number | O | Normalized | Cận trên lương | `salary_raw` | numeric base unit; >= min | Null nếu thỏa thuận/range mở/parse thất bại | Có, chỉ parsing |
 | `salary_currency` | string (ISO 4217) | O | Normalized | Đồng tiền được nêu | `salary_raw` | VND/USD/... theo ISO 4217 | Null nếu không xác định; không mặc định VND | Có, chỉ parsing |
 | `salary_period` | enum: hour, day, month, year | O | Normalized | Kỳ trả lương | `salary_raw` | map unit sang enum | Null nếu không nêu; không mặc định month | Có, chỉ parsing |
 | `salary_type` | enum: gross, net, negotiable, range, fixed, from, up_to, other | O | Normalized | Cách biểu diễn lương | `salary_raw` | deterministic parsing | Null nếu không xác định | Có, chỉ parsing |
 | `salary_disclosed` | boolean | R | Normalized | Có giá trị/range lương công khai | Salary region/raw text | true chỉ khi có số tiền; “thỏa thuận” = false | Không | Có, deterministic |
 | `skills_raw` | array<string> | O | Direct | Cụm kỹ năng nguyên văn | Skill section/description | giữ text, trim, dedupe exact | Null hoặc `[]` theo quy tắc array | Không |
-| `skills_normalized` | array<string> | O | Normalized | Tên skill canonical | `skills_raw`/description | alias map; stable order; unique | Null nếu chưa xử lý; `[]` nếu đã xử lý không có skill | Có, rule-based |
+| `skills_normalized` | array<string> | O | Normalized | Projection tên skill canonical | `skills_raw`/description | storage dùng taxonomy version + `job_posting_skills`, giữ requirement type | Null nếu chưa xử lý; `[]` nếu đã xử lý không có skill | Có, rule-based |
 | `education_level` | string | O | Normalized | Trình độ học vấn tối thiểu | Requirement text | map seed enum khi taxonomy được duyệt | Null nếu thiếu/mơ hồ | Có, rule-based |
 | `language_requirements` | array<string> | O | Normalized | Ngôn ngữ con người được yêu cầu | Requirement text | canonical language + level nếu nêu | Null/`[]` theo quy tắc array | Có, rule-based |
 | `description_raw` | string | R | Direct | Mô tả tin nguyên văn/đã trích text | Nội dung nguồn | normalize line ending; không tóm tắt | Không | Không |
@@ -48,9 +48,9 @@
 | `first_seen_at` | datetime | R | System | Lần đầu hệ thống quan sát identity | Successful crawl | ISO 8601 UTC | Không | Không |
 | `last_seen_at` | datetime | R | System | Lần gần nhất quan sát thành công | Successful crawl | ISO 8601 UTC; >= first_seen | Không | Không |
 | `collected_at` | datetime | R | System | Thời điểm thu evidence/snapshot này | Fetch clock | ISO 8601 UTC | Không | Không |
-| `is_active` | boolean | R | System | Trạng thái theo lifecycle policy | Observation history | false chỉ theo expiry/removal policy; fetch lỗi không đủ | Không | Có, từ quan sát hệ thống |
+| `is_active` | boolean | R | System | Projection trạng thái lifecycle cũ | Quan sát thành công | map từ `current_status`; fetch lỗi không đủ để đóng tin | Không | Có, từ quan sát hệ thống |
 | `content_hash` | string | R | System | Hash nội dung canonical để nhận biết đổi | Raw/normalized evidence bytes | lowercase SHA-256 hex; contract bytes phải version hóa | Không | Không |
-| `extractor_version` | string | R | System | Phiên bản extractor tạo record | Build/runtime metadata | semantic version hoặc immutable build ID | Không | Không |
+| `extractor_version` | string | R | System | Phiên bản extractor tạo record | Build/runtime metadata | semantic version hoặc immutable build ID; độc lập với Alembic migration revision | Không | Không |
 | `confidence_score` | number [0,1] | R | System | Confidence tổng hợp của normalized/inferred fields | Validation/extraction rules | clamp [0,1]; công thức version hóa | Không | Có, từ rule metrics |
 
 `R` = required, `O` = optional. Từ “suy luận” ở bảng bao gồm parsing/rule deterministic; LLM không thuộc Phase 0.
@@ -65,6 +65,16 @@
 - Mọi snapshot phải liên kết raw evidence, crawl run và canonical posting trong storage model dù các khóa liên kết chưa nằm trong exchange schema v0.1.
 
 ## Entity model
+
+### Database V1 Migration 003 storage mapping
+
+- Exchange identity `source` + `source_job_id` maps to unique source-scoped identity in `core.job_postings`; cross-source records remain separate.
+- Company candidates, aliases, and domains live separately; normalized company names are indexed but are not unique and do not trigger an automatic merge.
+- `location_raw` is retained on the posting while resolved locations are repeatable relations, including remote scope.
+- Flat salary exchange fields are compatibility projections only. Relational salary offers remain separate by component, period, currency, tax basis, disclosure, and estimation state.
+- Occupations and skills must use taxonomy versions of their own type, `taxonomy_type` is immutable after a version is inserted, and each parent must be in the child's version. Assignments retain confidence/method metadata.
+- `description_raw` maps to the single currently retained description. Historical descriptions and job observations are not part of Migration 003.
+- Every persisted posting retains `source_url`, first/last-seen timestamps, and optional identity-matched lineage to `ingestion.extracted_records`; deleting that record clears only the lineage ID.
 
 ### JobPosting
 
@@ -100,4 +110,4 @@ Lỗi có cấu trúc liên kết `CrawlRun`, URL/job ID nếu biết, stage, er
 
 ## Chưa quyết định
 
-Database engine, physical column types/indexes, snapshot payload format, cross-source cluster entity, multi-location representation và migrations được hoãn đến V1. Không tạo migration từ tài liệu Phase 0 này.
+Migration 003 quyết định PostgreSQL physical types/indexes cho current state, multi-location và versioned taxonomy. Observation history, change/status events, field evidence, cross-source duplicate candidates, analytics và serving vẫn cần quyết định/migration riêng. Không suy diễn rằng current-state row là lịch sử đầy đủ.
