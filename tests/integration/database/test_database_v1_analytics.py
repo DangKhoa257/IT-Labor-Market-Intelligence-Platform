@@ -814,30 +814,54 @@ def test_refresh_constraints_and_type_one_dimension(
 
 
 def test_taxonomy_dimension_identity(engine: sa.Engine, catalog: dict[str, object]) -> None:
-    for column, value in (
-        ("taxonomy_version_id", catalog["skill_version"]),
-        ("taxonomy_version", "SYNTHETIC_WRONG.v9"),
-        ("parent_occupation_id", catalog["occupation_2_id"]),
+    for column, value, message in (
+        (
+            "taxonomy_version_id",
+            catalog["skill_version"],
+            "analytics.dim_occupations identity is immutable",
+        ),
+        (
+            "taxonomy_version",
+            "SYNTHETIC_WRONG.v9",
+            "analytics occupation identity does not match taxonomy",
+        ),
+        (
+            "parent_occupation_id",
+            catalog["occupation_2_id"],
+            "analytics occupation identity does not match taxonomy",
+        ),
     ):
         _reject_with(
             engine,
             f"""UPDATE analytics.dim_occupations SET {column}=:value
                 WHERE occupation_key=:key""",
             {"value": value, "key": catalog["occupation_key"]},
-            "analytics occupation identity does not match taxonomy",
+            message,
         )
 
-    for column, value in (
-        ("taxonomy_version_id", catalog["occupation_version"]),
-        ("taxonomy_version", "SYNTHETIC_WRONG.v9"),
-        ("parent_skill_id", catalog["skill_id"]),
+    for column, value, message in (
+        (
+            "taxonomy_version_id",
+            catalog["occupation_version"],
+            "analytics.dim_skills identity is immutable",
+        ),
+        (
+            "taxonomy_version",
+            "SYNTHETIC_WRONG.v9",
+            "analytics skill identity does not match taxonomy",
+        ),
+        (
+            "parent_skill_id",
+            catalog["skill_id"],
+            "analytics skill identity does not match taxonomy",
+        ),
     ):
         _reject_with(
             engine,
             f"""UPDATE analytics.dim_skills SET {column}=:value
                 WHERE skill_key=:key""",
             {"value": value, "key": catalog["skill_key"]},
-            "analytics skill identity does not match taxonomy",
+            message,
         )
 
     with engine.connect() as connection:
@@ -1066,18 +1090,24 @@ def test_conformed_dimension_identity_is_immutable_and_type_one_updates_work(
         assert (
             connection.execute(
                 sa.text(
-                    """SELECT source.source_id, company.company_id, location.location_id,
-                          occupation.occupation_id, skill.skill_id
+                    """SELECT source.source_id, company.company_id, location_dim.location_id,
+                          occupation_dim.occupation_id, skill_dim.skill_id
                    FROM analytics.fact_job_observations AS fact
                    JOIN analytics.dim_sources AS source ON source.source_key=fact.source_key
                    LEFT JOIN analytics.dim_companies AS company
                      ON company.company_key=fact.company_key
                    JOIN analytics.bridge_job_observation_locations AS location
                      ON location.job_observation_fact_id=fact.job_observation_fact_id
+                   JOIN analytics.dim_locations AS location_dim
+                     ON location_dim.location_key=location.location_key
                    JOIN analytics.bridge_job_observation_occupations AS occupation
                      ON occupation.job_observation_fact_id=fact.job_observation_fact_id
+                   JOIN analytics.dim_occupations AS occupation_dim
+                     ON occupation_dim.occupation_key=occupation.occupation_key
                    JOIN analytics.bridge_job_observation_skills AS skill
                      ON skill.job_observation_fact_id=fact.job_observation_fact_id
+                   JOIN analytics.dim_skills AS skill_dim
+                     ON skill_dim.skill_key=skill.skill_key
                    WHERE fact.job_observation_fact_id=:fact
                      AND skill.requirement_type='required'"""
                 ),
