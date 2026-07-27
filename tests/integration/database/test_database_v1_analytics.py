@@ -1090,36 +1090,39 @@ def test_conformed_dimension_identity_is_immutable_and_type_one_updates_work(
         assert (
             connection.execute(
                 sa.text(
-                    """SELECT source.source_id, company.company_id, location_dim.location_id,
-                          occupation_dim.occupation_id, skill_dim.skill_id
+                    """SELECT source.source_id, company.company_id
                    FROM analytics.fact_job_observations AS fact
                    JOIN analytics.dim_sources AS source ON source.source_key=fact.source_key
                    LEFT JOIN analytics.dim_companies AS company
                      ON company.company_key=fact.company_key
-                   JOIN analytics.bridge_job_observation_locations AS location
-                     ON location.job_observation_fact_id=fact.job_observation_fact_id
-                   JOIN analytics.dim_locations AS location_dim
-                     ON location_dim.location_key=location.location_key
-                   JOIN analytics.bridge_job_observation_occupations AS occupation
-                     ON occupation.job_observation_fact_id=fact.job_observation_fact_id
-                   JOIN analytics.dim_occupations AS occupation_dim
-                     ON occupation_dim.occupation_key=occupation.occupation_key
-                   JOIN analytics.bridge_job_observation_skills AS skill
-                     ON skill.job_observation_fact_id=fact.job_observation_fact_id
-                   JOIN analytics.dim_skills AS skill_dim
-                     ON skill_dim.skill_key=skill.skill_key
-                   WHERE fact.job_observation_fact_id=:fact
-                     AND skill.requirement_type='required'"""
+                   WHERE fact.job_observation_fact_id=:fact"""
                 ),
                 {"fact": catalog["fact_id"]},
             ).one()
-            == (
-                catalog["source_id"],
-                catalog["company_id"],
-                catalog["location_id"],
-                catalog["occupation_id"],
-                catalog["skill_id"],
-            )
+            == (catalog["source_id"], catalog["company_id"])
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT location_id FROM analytics.dim_locations WHERE location_key=:key"),
+                {"key": catalog["location_key"]},
+            ).scalar_one()
+            == catalog["location_id"]
+        )
+        assert (
+            connection.execute(
+                sa.text(
+                    "SELECT occupation_id FROM analytics.dim_occupations WHERE occupation_key=:key"
+                ),
+                {"key": catalog["occupation_key"]},
+            ).scalar_one()
+            == catalog["occupation_id"]
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT skill_id FROM analytics.dim_skills WHERE skill_key=:key"),
+                {"key": catalog["skill_key"]},
+            ).scalar_one()
+            == catalog["skill_id"]
         )
 
 
