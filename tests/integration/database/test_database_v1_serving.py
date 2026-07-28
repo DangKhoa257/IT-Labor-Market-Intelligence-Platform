@@ -910,12 +910,12 @@ def test_served_observation_finalization_is_concurrency_safe(
                 )
 
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(create_child_first_document)
+            child_first_future = executor.submit(create_child_first_document)
             assert started.wait(2)
             time.sleep(0.2)
-            assert not future.done()
+            assert not child_first_future.done()
             child_transaction.commit()
-            future.result(timeout=10)
+            child_first_future.result(timeout=10)
     finally:
         if child_transaction.is_active:
             child_transaction.rollback()
@@ -983,12 +983,12 @@ def test_served_observation_finalization_is_concurrency_safe(
             return None
 
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(insert_document_first_child)
+            document_first_future = executor.submit(insert_document_first_child)
             assert started.wait(2)
             time.sleep(0.2)
-            assert not future.done()
+            assert not document_first_future.done()
             document_transaction.commit()
-            assert future.result(timeout=10) == "23514"
+            assert document_first_future.result(timeout=10) == "23514"
     finally:
         if document_transaction.is_active:
             document_transaction.rollback()
