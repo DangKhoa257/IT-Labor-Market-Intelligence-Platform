@@ -40,6 +40,10 @@ jobs:
       - name: Install development dependencies
         run: python -m pip install -e ".[dev]"
 
+      - name: Create local Supabase-compatible roles
+        run: |
+          psql postgresql://postgres:postgres@localhost:5432/it_labor_market_test -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF; IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF; END \$\$; ALTER ROLE service_role BYPASSRLS;"
+
       - name: Apply and verify Database V1 migrations
         run: |
           alembic upgrade head

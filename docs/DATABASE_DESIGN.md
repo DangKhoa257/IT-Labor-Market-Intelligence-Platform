@@ -4,18 +4,20 @@ PostgreSQL 16 is the production database. Database V1 migrations 001 and 002 pro
 `system` and `ingestion` schemas and evidence lineage. Migration 003 adds private, versioned
 `taxonomy` reference data and the canonical current-state `core` schema. Migration 004 adds
 immutable `history` and review-oriented `quality` storage. Migration 005 adds the private,
-observation-derived `analytics` warehouse and rebuildable daily aggregates. See
+observation-derived `analytics` warehouse and rebuildable daily aggregates. Migration 006 adds a
+private current-search cache and internal analytics views plus a function-only `api` schema. See
 [DATABASE_V1_FOUNDATION.md](DATABASE_V1_FOUNDATION.md) and
 [DATABASE_V1_CORE.md](DATABASE_V1_CORE.md), plus
 [DATABASE_V1_HISTORY_QUALITY.md](DATABASE_V1_HISTORY_QUALITY.md), plus
-[DATABASE_V1_ANALYTICS.md](DATABASE_V1_ANALYTICS.md).
+[DATABASE_V1_ANALYTICS.md](DATABASE_V1_ANALYTICS.md), plus
+[DATABASE_V1_SERVING_API.md](DATABASE_V1_SERVING_API.md).
 
 The existing unqualified Phase 3 ORM (`Source`, canonical job, company, skill, snapshot, quality,
 and duplicate models) remains a prototype used by the current read-only API and isolated SQLite
 tests. It is not the Database V1 migration contract and is not created by the V1 Alembic chain.
-The API remains compatible by continuing to use those prototype tables. Migrations 003–005 do not
+The HTTP API remains compatible by continuing to use those prototype tables. Migrations 003–006 do not
 rewrite API repositories, and no full canonical importer, observation writer, automatic diff,
-lifecycle scheduler, analytics scheduler, serving layer, or deduplication algorithm is included.
+lifecycle scheduler, production refresh scheduler, or deduplication algorithm is included.
 
 Configuration comes from `DATABASE_URL`. PostgreSQL-specific migration behavior is tested on
 PostgreSQL; SQLite remains restricted to isolated prototype unit tests.
@@ -43,7 +45,7 @@ descriptive Type 1 updates remain allowed.
 ```powershell
 alembic upgrade head
 alembic current
-alembic downgrade 20260727_0004
+alembic downgrade 20260727_0005
 ```
 
 No V1 migration uses metadata-driven `create_all()`/`drop_all()`, native enums, generic JSON, or

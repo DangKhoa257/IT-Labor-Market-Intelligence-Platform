@@ -81,15 +81,17 @@ alembic current
 uvicorn apps.api.main:app --reload
 ```
 
-Migrations 001–005 create the private Database V1 system, ingestion-lineage, taxonomy, canonical
-current-state, immutable history, data-quality, and analytics warehouse layers. The current API
-still uses the Phase 3 prototype ORM, and no full observation writer, canonical importer, analytics
-refresh worker, or serving layer is included. See
+Migrations 001–006 create the private Database V1 system, ingestion-lineage, taxonomy, canonical
+current-state, immutable history, data-quality, analytics warehouse, and serving layers. Migration
+006 exposes a function-only PostgreSQL RPC contract while the current HTTP API remains on the Phase
+3 prototype ORM. No full observation writer, canonical importer, or production refresh worker is
+included. See
 [DATABASE_V1_FOUNDATION.md](docs/DATABASE_V1_FOUNDATION.md),
 [DATABASE_V1_CORE.md](docs/DATABASE_V1_CORE.md), and
 [DATABASE_V1_HISTORY_QUALITY.md](docs/DATABASE_V1_HISTORY_QUALITY.md), plus
-[DATABASE_V1_ANALYTICS.md](docs/DATABASE_V1_ANALYTICS.md). Use
-`alembic downgrade 20260727_0004` to remove only Migration 005 and `docker compose down` to stop
+[DATABASE_V1_ANALYTICS.md](docs/DATABASE_V1_ANALYTICS.md), and
+[DATABASE_V1_SERVING_API.md](docs/DATABASE_V1_SERVING_API.md). Use
+`alembic downgrade 20260727_0005` to remove only Migration 006 and `docker compose down` to stop
 PostgreSQL.
 
 Run checks with `python -m pytest`, `python -m ruff check .`, and `python -m ruff format --check .`. See [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md), [API_REFERENCE.md](docs/API_REFERENCE.md), and [DATA_IMPORT_RUNBOOK.md](docs/DATA_IMPORT_RUNBOOK.md).

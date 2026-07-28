@@ -80,7 +80,7 @@ def test_empty_database_schema_inventory_and_current_revision(engine: sa.Engine)
             sa.text("SELECT extname FROM pg_extension WHERE extname='pgcrypto'")
         )
         assert (
-            connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "20260727_0005"
+            connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "20260727_0006"
         )
 
 

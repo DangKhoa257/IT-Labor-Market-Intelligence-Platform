@@ -1,6 +1,6 @@
 # Canonical Data Schema
 
-**Phiên bản:** 0.4 (Database V1 Migration 005 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, `quality`, và `analytics`. Migration 005 không thêm field exchange nên header gold template không đổi.
+**Phiên bản:** 0.5 (Database V1 Migration 006 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, `quality`, `analytics`, và `serving`. Migration 006 không thêm field exchange nên header gold template không đổi.
 
 ## Phân loại provenance
 
@@ -104,6 +104,18 @@
   occupation snapshot against later inserts. Corrections create a new historical observation;
   status, change, and repost events remain unaffected.
 
+### Database V1 Migration 006 serving and RPC mapping
+
+- `serving.job_search_documents` and `serving.job_search_salary_offers` are rebuildable current
+  projections with explicit history, canonical-pointer, source, salary, and refresh lineage.
+- Weighted PostgreSQL full-text search and filters are exposed only through eight versioned
+  `SECURITY DEFINER` functions in the function-only `api` schema.
+- Stale documents are hidden whenever their observation does not equal the posting's current
+  observation. `anon` and `authenticated` have no direct serving relation privileges.
+- Salary projections are atomically rebuilt from the selected observation by PostgreSQL. Public
+  RPC validation is NULL-safe, ordering is deterministic, and dashboard returns use explicit
+  descriptive columns rather than private relation row types.
+
 ### JobPosting
 
 Identity logic lâu dài của một tin tại một nguồn. Khóa đề xuất: internal UUID; unique `(source_id, source_job_id)`. Giữ current canonical state, first/last seen và active; có nhiều `JobSnapshot`. Cross-source duplicates không bị hợp nhất vật lý ở Phase 0.
@@ -138,4 +150,7 @@ Lỗi có cấu trúc liên kết `CrawlRun`, URL/job ID nếu biết, stage, er
 
 ## Chưa quyết định
 
-Migration 005 quyết định analytics storage từ immutable history và rebuildable daily aggregates. Serving, production refresh scheduling, writer/diff automation, lifecycle scheduling và deduplication algorithms vẫn cần task/migration riêng. Không suy diễn rằng current-state row là lịch sử đầy đủ.
+Migration 006 quyết định private serving storage và function-only RPC contract từ current state,
+immutable history và analytics. Production refresh scheduling, writer/diff automation, lifecycle
+scheduling và deduplication algorithms vẫn cần task/migration riêng. Không suy diễn rằng
+current-state row là lịch sử đầy đủ.

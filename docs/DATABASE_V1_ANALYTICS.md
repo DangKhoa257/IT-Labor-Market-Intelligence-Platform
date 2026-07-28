@@ -2,7 +2,8 @@
 
 Migration `20260727_0005` adds the private `analytics` schema. Its 18 tables form a
 warehouse storage contract over immutable Migration 004 history; the migration does not add a
-refresh worker, serving view, RPC, API, or dashboard.
+refresh worker, serving view, RPC, API, or dashboard. Migration 006 consumes this contract through
+private serving views and versioned RPC functions without changing analytics grains.
 
 ## Inventory and grain
 
