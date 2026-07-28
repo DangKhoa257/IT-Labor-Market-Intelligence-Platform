@@ -81,7 +81,7 @@ alembic current
 uvicorn apps.api.main:app --reload
 ```
 
-Migrations 001–006 create the private Database V1 system, ingestion-lineage, taxonomy, canonical
+Migrations 001–007 create the private Database V1 system, ingestion-lineage, taxonomy, canonical
 current-state, immutable history, data-quality, analytics warehouse, and serving layers. Migration
 006 exposes a function-only PostgreSQL RPC contract while the current HTTP API remains on the Phase
 3 prototype ORM. No full observation writer, canonical importer, or production refresh worker is
@@ -89,8 +89,11 @@ included. See
 [DATABASE_V1_FOUNDATION.md](docs/DATABASE_V1_FOUNDATION.md),
 [DATABASE_V1_CORE.md](docs/DATABASE_V1_CORE.md), and
 [DATABASE_V1_HISTORY_QUALITY.md](docs/DATABASE_V1_HISTORY_QUALITY.md), plus
-[DATABASE_V1_ANALYTICS.md](docs/DATABASE_V1_ANALYTICS.md), and
-[DATABASE_V1_SERVING_API.md](docs/DATABASE_V1_SERVING_API.md). Use
+[DATABASE_V1_ANALYTICS.md](docs/DATABASE_V1_ANALYTICS.md),
+[DATABASE_V1_SERVING_API.md](docs/DATABASE_V1_SERVING_API.md), and
+[DATABASE_V1_OPERATIONS.md](docs/DATABASE_V1_OPERATIONS.md). Migration 007 adds private
+operational evidence, security hardening, readiness views, and advisory indexes; it does not
+schedule, back up, restore, archive, delete, or partition data. Use
 `alembic downgrade 20260727_0005` to remove only Migration 006 and `docker compose down` to stop
 PostgreSQL.
 

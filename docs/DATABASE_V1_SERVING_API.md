@@ -4,6 +4,9 @@ Migration `20260727_0006` adds a private `serving` schema and an exposed, functi
 schema. It is a read contract over canonical current state, immutable history, and Migration 005
 analytics. It does not add a refresh scheduler, frontend, webhook, or application API migration.
 
+Migration 007 preserves all eight API contracts and exact API grants. It adds private operations
+evidence and security hardening without exposing an operations endpoint or relation.
+
 ## Inventory
 
 The private serving schema contains three tables:

@@ -1420,20 +1420,15 @@ def _enable_rls_and_harden_privileges() -> None:
     for table_name in OPERATIONS_TABLES:
         op.execute(f"ALTER TABLE operations.{table_name} ENABLE ROW LEVEL SECURITY")
     for schema_name in PRIVATE_SCHEMAS:
+        op.execute(f"REVOKE ALL ON SCHEMA {schema_name} FROM PUBLIC, anon, authenticated")
         op.execute(
-            f"REVOKE ALL ON SCHEMA {schema_name} FROM PUBLIC, anon, authenticated"
+            f"REVOKE ALL ON ALL TABLES IN SCHEMA {schema_name} FROM PUBLIC, anon, authenticated"
         )
         op.execute(
-            f"REVOKE ALL ON ALL TABLES IN SCHEMA {schema_name} "
-            "FROM PUBLIC, anon, authenticated"
+            f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA {schema_name} FROM PUBLIC, anon, authenticated"
         )
         op.execute(
-            f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA {schema_name} "
-            "FROM PUBLIC, anon, authenticated"
-        )
-        op.execute(
-            f"REVOKE ALL ON ALL FUNCTIONS IN SCHEMA {schema_name} "
-            "FROM PUBLIC, anon, authenticated"
+            f"REVOKE ALL ON ALL FUNCTIONS IN SCHEMA {schema_name} FROM PUBLIC, anon, authenticated"
         )
         op.execute(
             f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema_name} "
@@ -1447,12 +1442,11 @@ def _enable_rls_and_harden_privileges() -> None:
             f"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema_name} "
             "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated"
         )
-    op.execute(
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA api "
-        "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"
-    )
+    op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA api REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC")
     op.execute("GRANT USAGE ON SCHEMA operations TO service_role")
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA operations TO service_role")
+    op.execute(
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA operations TO service_role"
+    )
     op.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA operations TO service_role")
     for signature in _callable_signatures():
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC, anon, authenticated")
