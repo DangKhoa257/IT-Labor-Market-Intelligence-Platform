@@ -124,7 +124,7 @@ def test_inventory_security_baseline_and_additive_indexes(engine: sa.Engine) -> 
         baseline = connection.execute(
             sa.text("SELECT operations.assert_security_baseline_v1()")
         ).scalar()
-        assert baseline is None
+        assert baseline == ""
         assert (
             connection.scalar(
                 sa.text("SELECT count(*) FROM pg_policies WHERE schemaname='operations'")
@@ -309,7 +309,7 @@ def test_downgrade_and_reupgrade_preserve_prior_api(engine: sa.Engine) -> None:
     finally:
         command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert (
-            connection.execute(sa.text("SELECT operations.assert_security_baseline_v1()")).scalar()
-            is None
-        )
+        baseline = connection.execute(
+            sa.text("SELECT operations.assert_security_baseline_v1()")
+        ).scalar()
+        assert baseline == ""

@@ -1,5 +1,8 @@
 # Canonical Data Schema
 
+The exchange contract remains fully **Database V1 Migration 006 compatibility** compatible;
+Migration 007 adds private operational evidence only.
+
 **Phiên bản:** 0.5 (Database V1 Migration 007 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, `quality`, `analytics`, `serving`, và operational evidence private trong `operations`. Migration 007 không thêm field exchange nên header gold template không đổi.
 
 ## Phân loại provenance

@@ -732,38 +732,39 @@ def _create_trigger_functions_and_triggers() -> None:
                     USING ERRCODE = '23514';
             END IF;
 
-            IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = 'partition_policies'
-               AND OLD.status IN ('approved','implemented')
-               AND (NEW.target_schema IS DISTINCT FROM OLD.target_schema
-                    OR NEW.target_table IS DISTINCT FROM OLD.target_table
-                    OR NEW.partition_key IS DISTINCT FROM OLD.partition_key
-                    OR NEW.partition_strategy IS DISTINCT FROM OLD.partition_strategy
-                    OR NEW.partition_interval IS DISTINCT FROM OLD.partition_interval
-                    OR NEW.activation_row_threshold IS DISTINCT FROM
-                       OLD.activation_row_threshold) THEN
-                RAISE EXCEPTION 'approved partition policy identity is immutable'
-                    USING ERRCODE = '23514';
-            END IF;
-
-            IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = 'retention_policies' THEN
-                IF EXISTS (SELECT 1 FROM operations.retention_runs WHERE policy_id = OLD.id)
-                   AND (NEW.target_schema IS DISTINCT FROM OLD.target_schema
-                        OR NEW.target_table IS DISTINCT FROM OLD.target_table
-                        OR NEW.record_class IS DISTINCT FROM OLD.record_class
-                        OR NEW.time_column IS DISTINCT FROM OLD.time_column
-                        OR NEW.archive_after_days IS DISTINCT FROM OLD.archive_after_days
-                        OR NEW.delete_after_days IS DISTINCT FROM OLD.delete_after_days
-                        OR NEW.requires_archive IS DISTINCT FROM OLD.requires_archive
-                        OR NEW.policy_version IS DISTINCT FROM OLD.policy_version) THEN
-                    RAISE EXCEPTION 'referenced retention policy identity is immutable'
-                        USING ERRCODE = '23514';
-                END IF;
-                IF OLD.legal_hold AND NOT NEW.legal_hold
-                   AND (NEW.policy_version = OLD.policy_version
-                        OR NEW.approved_by IS NULL OR NEW.approved_at IS NULL
-                        OR NEW.approved_at IS NOT DISTINCT FROM OLD.approved_at) THEN
-                    RAISE EXCEPTION 'clearing legal hold requires new approved policy version'
-                        USING ERRCODE = '23514';
+            IF TG_OP = 'UPDATE' THEN
+                IF TG_TABLE_NAME = 'partition_policies' THEN
+                    IF OLD.status IN ('approved','implemented')
+                       AND (NEW.target_schema IS DISTINCT FROM OLD.target_schema
+                            OR NEW.target_table IS DISTINCT FROM OLD.target_table
+                            OR NEW.partition_key IS DISTINCT FROM OLD.partition_key
+                            OR NEW.partition_strategy IS DISTINCT FROM OLD.partition_strategy
+                            OR NEW.partition_interval IS DISTINCT FROM OLD.partition_interval
+                            OR NEW.activation_row_threshold IS DISTINCT FROM
+                               OLD.activation_row_threshold) THEN
+                        RAISE EXCEPTION 'approved partition policy identity is immutable'
+                            USING ERRCODE = '23514';
+                    END IF;
+                ELSIF TG_TABLE_NAME = 'retention_policies' THEN
+                    IF EXISTS (SELECT 1 FROM operations.retention_runs WHERE policy_id = OLD.id)
+                       AND (NEW.target_schema IS DISTINCT FROM OLD.target_schema
+                            OR NEW.target_table IS DISTINCT FROM OLD.target_table
+                            OR NEW.record_class IS DISTINCT FROM OLD.record_class
+                            OR NEW.time_column IS DISTINCT FROM OLD.time_column
+                            OR NEW.archive_after_days IS DISTINCT FROM OLD.archive_after_days
+                            OR NEW.delete_after_days IS DISTINCT FROM OLD.delete_after_days
+                            OR NEW.requires_archive IS DISTINCT FROM OLD.requires_archive
+                            OR NEW.policy_version IS DISTINCT FROM OLD.policy_version) THEN
+                        RAISE EXCEPTION 'referenced retention policy identity is immutable'
+                            USING ERRCODE = '23514';
+                    END IF;
+                    IF OLD.legal_hold AND NOT NEW.legal_hold
+                       AND (NEW.policy_version = OLD.policy_version
+                            OR NEW.approved_by IS NULL OR NEW.approved_at IS NULL
+                            OR NEW.approved_at IS NOT DISTINCT FROM OLD.approved_at) THEN
+                        RAISE EXCEPTION 'clearing legal hold requires new approved policy version'
+                            USING ERRCODE = '23514';
+                    END IF;
                 END IF;
             END IF;
             NEW.updated_at := now();
@@ -794,38 +795,33 @@ def _create_trigger_functions_and_triggers() -> None:
                     USING ERRCODE='23514'; END IF;
             END IF;
 
-            IF TG_TABLE_NAME = 'retention_runs' AND NEW.status='delete_authorized'
-               AND guard IS DISTINCT FROM 'retention_delete' THEN
-                RAISE EXCEPTION 'retention authorization requires finalizer'
-                    USING ERRCODE='23514';
-            ELSIF TG_TABLE_NAME = 'archive_manifests' AND NEW.status='verified'
-               AND guard IS DISTINCT FROM 'archive_manifest' THEN
-                RAISE EXCEPTION 'archive verification requires finalizer'
-                    USING ERRCODE='23514';
-            ELSIF TG_TABLE_NAME = 'backup_snapshots'
-               AND NEW.verification_status='verified'
-               AND guard IS DISTINCT FROM 'backup_snapshot' THEN
-                RAISE EXCEPTION 'backup verification requires finalizer'
-                    USING ERRCODE='23514';
-            ELSIF TG_TABLE_NAME = 'restore_drills' AND NEW.status='succeeded'
-               AND guard IS DISTINCT FROM 'restore_drill' THEN
-                RAISE EXCEPTION 'restore success requires finalizer'
-                    USING ERRCODE='23514';
+            IF TG_TABLE_NAME = 'retention_runs' THEN
+                IF NEW.status='delete_authorized' AND guard IS DISTINCT FROM 'retention_delete' THEN
+                    RAISE EXCEPTION 'retention authorization requires finalizer' USING ERRCODE='23514';
+                END IF;
+            ELSIF TG_TABLE_NAME = 'archive_manifests' THEN
+                IF NEW.status='verified' AND guard IS DISTINCT FROM 'archive_manifest' THEN
+                    RAISE EXCEPTION 'archive verification requires finalizer' USING ERRCODE='23514';
+                END IF;
+            ELSIF TG_TABLE_NAME = 'backup_snapshots' THEN
+                IF NEW.verification_status='verified' AND guard IS DISTINCT FROM 'backup_snapshot' THEN
+                    RAISE EXCEPTION 'backup verification requires finalizer' USING ERRCODE='23514';
+                END IF;
+            ELSIF TG_TABLE_NAME = 'restore_drills' THEN
+                IF NEW.status='succeeded' AND guard IS DISTINCT FROM 'restore_drill' THEN
+                    RAISE EXCEPTION 'restore success requires finalizer' USING ERRCODE='23514';
+                END IF;
+                IF NEW.status='running' AND NOT EXISTS (
+                    SELECT 1 FROM operations.backup_snapshots
+                    WHERE id=NEW.backup_snapshot_id AND status='succeeded'
+                      AND verification_status='verified'
+                ) THEN
+                    RAISE EXCEPTION 'restore drill requires verified backup' USING ERRCODE='23514';
+                END IF;
             ELSIF TG_TABLE_NAME = 'health_check_runs'
                AND NEW.status IN ('passed','passed_with_warnings','failed')
                AND guard IS DISTINCT FROM 'health_check' THEN
-                RAISE EXCEPTION 'health outcome requires finalizer'
-                    USING ERRCODE='23514';
-            END IF;
-
-            IF TG_TABLE_NAME = 'restore_drills' AND NEW.status='running'
-               AND NOT EXISTS (
-                   SELECT 1 FROM operations.backup_snapshots
-                   WHERE id=NEW.backup_snapshot_id AND status='succeeded'
-                     AND verification_status='verified'
-               ) THEN
-                RAISE EXCEPTION 'restore drill requires verified backup'
-                    USING ERRCODE='23514';
+                RAISE EXCEPTION 'health outcome requires finalizer' USING ERRCODE='23514';
             END IF;
             NEW.updated_at := now();
             RETURN NEW;
