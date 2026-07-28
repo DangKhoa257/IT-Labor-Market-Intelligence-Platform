@@ -661,11 +661,11 @@ def _create_search_function() -> None:
                          <= p_salary_max)))
           ), counted AS (SELECT matched.*, count(*) OVER () AS matched_count FROM matched)
           SELECT counted.job_posting_id, counted.observation_id, counted.title,
-                 counted.company_id, counted.company_name, counted.source_id,
-                 counted.source_slug, counted.source_display_name, counted.source_url,
-                 counted.canonical_url, counted.status, counted.posted_at, counted.expires_at,
-                 counted.first_seen_at, counted.last_seen_at, counted.employment_type_code,
-                 counted.seniority_level_code, counted.work_mode, counted.location_labels,
+                 counted.company_id, counted.company_name::text, counted.source_id,
+                 counted.source_slug::text, counted.source_display_name::text, counted.source_url,
+                 counted.canonical_url, counted.status::text, counted.posted_at, counted.expires_at,
+                 counted.first_seen_at, counted.last_seen_at, counted.employment_type_code::text,
+                 counted.seniority_level_code::text, counted.work_mode::text, counted.location_labels,
                  counted.occupation_names, counted.skill_names, counted.salary_disclosed,
                  counted.salaries, counted.score, counted.matched_count
           FROM counted
@@ -694,11 +694,11 @@ def _create_get_job_function() -> None:
           document_version TEXT, updated_at TIMESTAMPTZ
         ) LANGUAGE sql SECURITY DEFINER STABLE
         SET search_path = pg_catalog, api, serving AS $$
-          SELECT card.job_posting_id, card.observation_id, card.source_id, card.source_slug,
-                 card.source_display_name, card.source_job_id, card.company_id, card.source_url,
+          SELECT card.job_posting_id, card.observation_id, card.source_id, card.source_slug::text,
+                 card.source_display_name::text, card.source_job_id::text, card.company_id, card.source_url,
                  card.canonical_url, card.title, card.title_normalized, card.company_name,
-                 card.description_excerpt, card.employment_type_code,
-                 card.seniority_level_code, card.work_mode, card.status, card.posted_at,
+                 card.description_excerpt, card.employment_type_code::text,
+                 card.seniority_level_code::text, card.work_mode::text, card.status::text, card.posted_at,
                  card.expires_at, card.first_seen_at, card.last_seen_at, card.locations_json,
                  card.occupations_json, card.skills_json,
                  COALESCE((SELECT jsonb_agg(jsonb_build_object(
@@ -710,7 +710,7 @@ def _create_get_job_function() -> None:
                              salary.compensation_type, salary.id)
                     FROM serving.job_search_salary_offers AS salary
                     WHERE salary.job_posting_id=card.job_posting_id), '[]'::jsonb),
-                 card.document_version, card.updated_at
+                 card.document_version::text, card.updated_at
           FROM serving.v_current_job_cards AS card
           WHERE card.job_posting_id = p_job_posting_id
         $$
