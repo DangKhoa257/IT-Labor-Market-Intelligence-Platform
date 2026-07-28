@@ -716,14 +716,16 @@ def _create_trigger_functions_and_triggers() -> None:
         CREATE FUNCTION operations.protect_policy_identity()
         RETURNS trigger LANGUAGE plpgsql
         SET search_path = pg_catalog, operations AS $$
-        DECLARE relation_oid OID;
+        DECLARE relation_oid OID; key_name TEXT;
         BEGIN
             relation_oid := to_regclass(NEW.target_schema || '.' || NEW.target_table);
+            key_name := CASE WHEN TG_TABLE_NAME = 'partition_policies'
+                             THEN to_jsonb(NEW)->>'partition_key'
+                             ELSE to_jsonb(NEW)->>'time_column' END;
             IF relation_oid IS NULL OR NOT EXISTS (
                 SELECT 1 FROM pg_attribute
                 WHERE attrelid = relation_oid
-                  AND attname = CASE WHEN TG_TABLE_NAME = 'partition_policies'
-                                     THEN NEW.partition_key ELSE NEW.time_column END
+                  AND attname = key_name
                   AND attnum > 0 AND NOT attisdropped
             ) THEN
                 RAISE EXCEPTION 'operational policy target or key does not exist'
