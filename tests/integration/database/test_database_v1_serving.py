@@ -1933,7 +1933,11 @@ def test_security_grants_functions_and_roles(engine: sa.Engine, catalog: dict[st
             role_connection.execute(sa.text(f"SET ROLE {role}"))
             assert (
                 role_connection.scalar(
-                    sa.text("SELECT count(*) FROM api.search_jobs_v1(p_query=>'Python')")
+                    sa.text(
+                        """SELECT count(*) FROM api.search_jobs_v1(p_query=>'Python')
+                           WHERE job_posting_id=:job"""
+                    ),
+                    {"job": catalog["job"]},
                 )
                 == 1
             )
