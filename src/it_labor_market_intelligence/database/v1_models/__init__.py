@@ -1,4 +1,4 @@
-"""Schema-qualified ORM models for Database V1 migrations 001 through 005."""
+"""Schema-qualified ORM models for Database V1 migrations 001 through 006."""
 
 from .analytics import (
     AnalyticsRefreshRun,
@@ -64,6 +64,7 @@ from .quality import (
     FieldEvidence,
     ValidationRun,
 )
+from .serving import JobSearchDocument, JobSearchSalaryOffer, ServingRefreshRun
 from .system import AuditEvent, BackgroundJob, PipelineVersion, RetentionPolicy
 from .taxonomy import (
     EmploymentType,
@@ -116,6 +117,8 @@ __all__ = [
     "JobPostingLocation",
     "JobPostingOccupation",
     "JobPostingSkill",
+    "JobSearchDocument",
+    "JobSearchSalaryOffer",
     "JobChangeEvent",
     "JobObservation",
     "JobRepostEvent",
@@ -134,6 +137,7 @@ __all__ = [
     "RetentionPolicy",
     "SalaryOffer",
     "SeniorityLevel",
+    "ServingRefreshRun",
     "Skill",
     "SkillAlias",
     "Source",
