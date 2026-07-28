@@ -48,6 +48,7 @@ jobs:
         run: |
           alembic upgrade head
           alembic current
+          psql postgresql://postgres:postgres@localhost:5432/it_labor_market_test -v ON_ERROR_STOP=1 -c "SELECT operations.assert_security_baseline_v1();"
 
       - name: Run tests
         run: python -m pytest

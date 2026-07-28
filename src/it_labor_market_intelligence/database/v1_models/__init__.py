@@ -1,4 +1,4 @@
-"""Schema-qualified ORM models for Database V1 migrations 001 through 006."""
+"""Schema-qualified ORM models for Database V1 migrations 001 through 007."""
 
 from .analytics import (
     AnalyticsRefreshRun,
@@ -56,6 +56,22 @@ from .ingestion import (
     Source,
     SourcePolicy,
 )
+from .operations import (
+    ArchiveManifest,
+    ArchiveObject,
+    BackupSnapshot,
+    HealthCheckResult,
+    HealthCheckRun,
+    MaintenanceRun,
+    PartitionPolicy,
+    RestoreDrill,
+    RestoreDrillCheck,
+    RetentionRun,
+    RetentionRunItem,
+)
+from .operations import (
+    RetentionPolicy as OperationsRetentionPolicy,
+)
 from .quality import (
     DataQualityIssue,
     DuplicateCandidate,
@@ -78,8 +94,11 @@ from .taxonomy import (
 
 __all__ = [
     "AnalyticsRefreshRun",
+    "ArchiveManifest",
+    "ArchiveObject",
     "AuditEvent",
     "BackgroundJob",
+    "BackupSnapshot",
     "BridgeJobObservationLocation",
     "BridgeJobObservationOccupation",
     "BridgeJobObservationSkill",
@@ -123,7 +142,10 @@ __all__ = [
     "JobObservation",
     "JobRepostEvent",
     "JobStatusEvent",
+    "HealthCheckResult",
+    "HealthCheckRun",
     "Location",
+    "MaintenanceRun",
     "Occupation",
     "OccupationAlias",
     "ObservationDescription",
@@ -131,10 +153,16 @@ __all__ = [
     "ObservationOccupation",
     "ObservationSalary",
     "ObservationSkill",
+    "OperationsRetentionPolicy",
     "ParserVersion",
     "PipelineVersion",
+    "PartitionPolicy",
     "RawObject",
     "RetentionPolicy",
+    "RetentionRun",
+    "RetentionRunItem",
+    "RestoreDrill",
+    "RestoreDrillCheck",
     "SalaryOffer",
     "SeniorityLevel",
     "ServingRefreshRun",
