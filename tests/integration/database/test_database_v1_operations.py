@@ -91,11 +91,11 @@ def _backup(connection: sa.Connection, suffix: str) -> UUID:
                 environment_name, provider, provider_snapshot_id, backup_type, status,
                 postgres_version, alembic_revision, database_identifier, recovery_point_at,
                 started_at, finished_at, size_bytes, checksum_sha256, storage_uri,
-                encryption_method
+                encryption_method, encryption_key_reference
             ) VALUES (
                 'test', 'test-provider', :suffix, 'logical', 'succeeded', '16',
                 '20260728_0007', 'test-db', now(), now() - interval '1 minute', now(),
-                1, repeat('a', 64), 's3://test-bucket/backup', 'kms'
+                1, repeat('a', 64), 's3://test-bucket/backup', 'kms', 'kms://key/test'
             ) RETURNING id
             """
         ),
