@@ -809,15 +809,15 @@ def _create_dimension_dashboard_functions(common: str) -> None:
               p_source_ids UUID[] DEFAULT NULL, p_{ids_name} UUID[] DEFAULT NULL,
               {extra}p_limit INTEGER DEFAULT 100, p_offset INTEGER DEFAULT 0)
             RETURNS TABLE (metric_date DATE, source_id UUID, source_slug TEXT,
-              {dimension_returns}, {', '.join(metric + ' BIGINT' for metric in metrics.split(', '))},
+              {dimension_returns}, {", ".join(metric + " BIGINT" for metric in metrics.split(", "))},
               calculation_version TEXT, calculated_at TIMESTAMPTZ)
             LANGUAGE plpgsql SECURITY DEFINER STABLE
             SET search_path = pg_catalog, api, serving AS $$ BEGIN {common}
               IF p_limit NOT BETWEEN 1 AND 1000 OR p_offset NOT BETWEEN 0 AND 5000 THEN
                 RAISE EXCEPTION 'invalid pagination' USING ERRCODE='22023'; END IF;
               RETURN QUERY SELECT view.metric_date, view.source_id, view.source_slug,
-                {', '.join('view.' + item.strip() for item in dimensions.split(','))},
-                {', '.join('view.' + item.strip() for item in metrics.split(','))},
+                {", ".join("view." + item.strip() for item in dimensions.split(","))},
+                {", ".join("view." + item.strip() for item in metrics.split(","))},
                 view.calculation_version, view.calculated_at
               FROM serving.{view_name} AS view
               WHERE view.metric_date BETWEEN p_start_date AND p_end_date

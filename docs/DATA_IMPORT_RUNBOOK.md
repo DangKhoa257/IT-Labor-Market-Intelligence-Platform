@@ -7,7 +7,7 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-Apply and verify Database V1 migrations 001 through 005:
+Apply and verify Database V1 migrations 001 through 006:
 
 ```powershell
 alembic upgrade head
@@ -15,7 +15,8 @@ alembic current
 ```
 
 Migration 003 creates a canonical current-state destination, Migration 004 adds immutable history
-and quality-review storage, and Migration 005 adds analytics storage and deterministic seed rows.
+and quality-review storage, Migration 005 adds analytics storage and deterministic seed rows, and
+Migration 006 adds rebuildable serving caches and a function-only RPC schema.
 They do not include the normalization/application service, full observation writer, automatic
 diffing, lifecycle scheduling, production analytics refresh scheduler, or deduplication algorithm.
 The legacy `import_dataset` command belongs to the prototype Phase 3 database and must not be run

@@ -48,8 +48,14 @@ line-length = 100
 extend-exclude = '''
 /(
   \.deps
+  | \.mypy_cache
   | \.packages
+  | \.pytest_cache
+  | \.ruff_cache
+  | \.test-deps
+  | \.uv-cache
   | \.uv-python
+  | \.uv-tools
   | \.venv
 )/
 '''

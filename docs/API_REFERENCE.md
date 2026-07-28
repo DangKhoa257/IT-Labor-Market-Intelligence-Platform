@@ -22,3 +22,12 @@ Analytics are descriptive for the persisted sample. Currency groups are never co
 Salary responses identify `posting_range_midpoint` as the observation basis. When a currency has `sample_count=1`, `statistically_meaningful` is false and the returned mean/median must be read only as that posting's range midpoint.
 
 Quality summaries separate accepted and rejected records, INFO-only notices, WARNING/ERROR records, and deterministic title-classification coverage. INFO notices such as `title_unclassified` do not make a record rejected. Duplicate responses include source identities and URLs for every advisory cluster member.
+
+## Database V1 function-only RPC contract
+
+Migration 006 separately exposes eight PostgreSQL RPC functions in `api`: `search_jobs_v1`,
+`get_job_v1`, `market_overview_v1`, `company_hiring_v1`, `location_demand_v1`,
+`occupation_demand_v1`, `skill_demand_v1`, and `salary_metrics_v1`. The schema contains functions
+only. `anon` and `authenticated` can execute exactly those functions but cannot read private
+`serving` tables or views directly. Search and detail RPCs hide serving documents whose
+observation no longer matches the canonical current-observation pointer.
