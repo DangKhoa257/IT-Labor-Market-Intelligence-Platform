@@ -220,8 +220,8 @@ def test_backup_finalizer_immutability_and_health_finalizer(engine: sa.Engine) -
         connection.execute(
             sa.text(
                 """INSERT INTO operations.health_check_results
-                (health_check_run_id,check_code,category,severity,status,finished_at)
-                VALUES (:id,'security','security','critical','passed',now())"""
+                (health_check_run_id,check_code,category,severity,status)
+                VALUES (:id,'security','security','critical','passed')"""
             ),
             {"id": health_id},
         )
