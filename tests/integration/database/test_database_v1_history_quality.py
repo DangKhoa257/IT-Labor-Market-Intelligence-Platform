@@ -367,7 +367,7 @@ def test_schema_inventory_and_head(engine: sa.Engine) -> None:
     assert {"reviewed_by", "reviewed_at", "review_notes"} <= evidence_columns
     with engine.connect() as connection:
         assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == (
-            "20260727_0006"
+            "20260728_0007"
         )
         index_names = set(
             connection.scalars(

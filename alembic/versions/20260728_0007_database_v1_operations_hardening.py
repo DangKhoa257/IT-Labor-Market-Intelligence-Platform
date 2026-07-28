@@ -1111,8 +1111,8 @@ def _create_views() -> None:
         CREATE VIEW operations.v_unindexed_foreign_keys AS
         SELECT source_namespace.nspname::text AS table_schema,
                source.relname::text AS table_name,
-               constraint.conname::text AS constraint_name,
-               ARRAY(SELECT attribute.attname::text FROM unnest(constraint.conkey)
+               foreign_key.conname::text AS constraint_name,
+               ARRAY(SELECT attribute.attname::text FROM unnest(foreign_key.conkey)
                      WITH ORDINALITY AS key(attnum, ordinal)
                      JOIN pg_attribute AS attribute
                        ON attribute.attrelid=source.oid AND attribute.attnum=key.attnum
@@ -1120,17 +1120,17 @@ def _create_views() -> None:
                target_namespace.nspname::text AS referenced_schema,
                target.relname::text AS referenced_table,
                source.reltuples::bigint AS estimated_rows
-        FROM pg_constraint AS constraint
-        JOIN pg_class AS source ON source.oid=constraint.conrelid
+        FROM pg_constraint AS foreign_key
+        JOIN pg_class AS source ON source.oid=foreign_key.conrelid
         JOIN pg_namespace AS source_namespace ON source_namespace.oid=source.relnamespace
-        JOIN pg_class AS target ON target.oid=constraint.confrelid
+        JOIN pg_class AS target ON target.oid=foreign_key.confrelid
         JOIN pg_namespace AS target_namespace ON target_namespace.oid=target.relnamespace
-        WHERE constraint.contype='f' AND NOT EXISTS (
+        WHERE foreign_key.contype='f' AND NOT EXISTS (
             SELECT 1 FROM pg_index AS index
             WHERE index.indrelid=source.oid AND index.indisvalid AND index.indisready
               AND index.indpred IS NULL
-              AND (index.indkey::smallint[])[0:cardinality(constraint.conkey)-1]
-                  = constraint.conkey
+              AND (index.indkey::smallint[])[0:cardinality(foreign_key.conkey)-1]
+                  = foreign_key.conkey
         )
         """
     )

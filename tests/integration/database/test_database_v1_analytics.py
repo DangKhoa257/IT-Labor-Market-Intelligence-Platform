@@ -807,7 +807,7 @@ def test_schema_dates_and_unknown_dimensions(engine: sa.Engine) -> None:
     assert set(sa.inspect(engine).get_table_names(schema="analytics")) == ANALYTICS_TABLES
     with engine.connect() as connection:
         assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == (
-            "20260727_0006"
+            "20260728_0007"
         )
         assert connection.execute(
             sa.text("SELECT min(calendar_date), max(calendar_date) FROM analytics.dim_dates")
