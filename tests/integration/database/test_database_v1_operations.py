@@ -7,6 +7,7 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -84,9 +85,11 @@ def _reject(engine: sa.Engine, statement: str, **parameters: object) -> None:
 
 
 def _backup(connection: sa.Connection, suffix: str) -> UUID:
-    return connection.scalar(
-        sa.text(
-            """
+    return cast(
+        UUID,
+        connection.scalar(
+            sa.text(
+                """
             INSERT INTO operations.backup_snapshots (
                 environment_name, provider, provider_snapshot_id, backup_type, status,
                 postgres_version, alembic_revision, database_identifier, recovery_point_at,
@@ -98,8 +101,9 @@ def _backup(connection: sa.Connection, suffix: str) -> UUID:
                 1, repeat('a', 64), 's3://test-bucket/backup', 'kms', 'kms://key/test'
             ) RETURNING id
             """
+            ),
+            {"suffix": suffix},
         ),
-        {"suffix": suffix},
     )
 
 
