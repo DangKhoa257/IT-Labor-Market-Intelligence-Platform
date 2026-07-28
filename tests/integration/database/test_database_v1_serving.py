@@ -878,9 +878,9 @@ def test_salary_projection_is_atomic_and_history_is_unchanged(
         salary_b2 = _one(
             connection,
             """INSERT INTO history.observation_salaries
-                   (observation_id, amount_exact, currency, period, tax_basis,
+                   (observation_id, offer_index, amount_exact, currency, period, tax_basis,
                     compensation_type, is_disclosed)
-               VALUES (:observation, 800, 'USD', 'month', 'gross', 'bonus', true)
+               VALUES (:observation, 1, 800, 'USD', 'month', 'gross', 'bonus', true)
                RETURNING id""",
             {"observation": observation_b},
         )
