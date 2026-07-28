@@ -37,3 +37,10 @@ oversized filter arrays, and invalid salary bounds. Relevance and date sorts hav
 and posting-ID tie breakers. Dashboard RPCs expose explicit descriptive columns; location,
 occupation, and salary unknown-dimension flags default to false. Serving salary rows are generated
 atomically from the selected immutable observation rather than accepted as loader-provided copies.
+
+Creating a serving document finalizes its five historical child collections against later inserts
+with transaction-safe observation locking. Description redaction or expiry invalidates the serving
+document immediately; the job can temporarily disappear until rebuilt without the excerpt or its
+search terms. `get_job_v1` reports `salary_disclosed` immediately before `salary_offers_json`.
+Location and skill dashboard pagination use their complete grains, preventing page-boundary gaps
+or duplicates.

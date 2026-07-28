@@ -6,6 +6,7 @@ import os
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
 from threading import Event
 
 import pytest
@@ -94,6 +95,7 @@ API_OUTPUTS = {
         "locations_json:jsonb",
         "occupations_json:jsonb",
         "skills_json:jsonb",
+        "salary_disclosed:boolean",
         "salary_offers_json:jsonb",
         "document_version:text",
         "updated_at:timestamp with time zone",
@@ -229,6 +231,76 @@ def _reject(engine: sa.Engine, sql: str, values: dict[str, object]) -> DBAPIErro
     with pytest.raises(DBAPIError) as error, engine.begin() as connection:
         connection.execute(sa.text(sql), values)
     return error.value
+
+
+def _create_observation(
+    connection: sa.Connection,
+    catalog: dict[str, object],
+    source_job_id: str,
+    title: str,
+    observed_at: str,
+) -> tuple[object, object]:
+    record = _one(
+        connection,
+        """INSERT INTO ingestion.extracted_records
+               (extraction_run_id, source_id, source_job_id, fetch_event_id,
+                record_schema_version, direct_payload_json, direct_hash, extracted_at)
+           VALUES (:extraction, :source, :source_job_id, :fetch, 'direct.v1',
+                   '{}'::jsonb, :hash, :observed_at) RETURNING id""",
+        {
+            "extraction": catalog["extraction"],
+            "source": catalog["source"],
+            "source_job_id": source_job_id,
+            "fetch": catalog["fetch"],
+            "hash": sha256(f"record:{source_job_id}".encode()).hexdigest(),
+            "observed_at": observed_at,
+        },
+    )
+    source_url = f"https://example.test/jobs/{source_job_id}"
+    job = _one(
+        connection,
+        """INSERT INTO core.job_postings
+               (source_id, source_job_id, source_url, title_raw, company_id,
+                first_seen_at, last_seen_at, last_changed_at)
+           VALUES (:source, :source_job_id, :source_url, :title, :company,
+                   :observed_at, :observed_at, :observed_at) RETURNING id""",
+        {
+            "source": catalog["source"],
+            "source_job_id": source_job_id,
+            "source_url": source_url,
+            "title": title,
+            "company": catalog["company"],
+            "observed_at": observed_at,
+        },
+    )
+    observation = _one(
+        connection,
+        """INSERT INTO history.job_observations
+               (job_posting_id, source_id, source_job_id, extracted_record_id,
+                crawl_run_id, observation_reason, observed_at, canonical_hash, status,
+                source_url, title_raw, title_normalized, company_id, company_name_raw,
+                canonical_payload_json, normalization_version)
+           VALUES (:job, :source, :source_job_id, :record, :crawl, 'first_seen',
+                   :observed_at, :hash, 'active', :source_url, :title, lower(:title),
+                   :company, 'Example Cloud', '{}'::jsonb, 'serving.v1') RETURNING id""",
+        {
+            "job": job,
+            "source": catalog["source"],
+            "source_job_id": source_job_id,
+            "record": record,
+            "crawl": catalog["crawl"],
+            "observed_at": observed_at,
+            "hash": sha256(f"observation:{source_job_id}".encode()).hexdigest(),
+            "source_url": source_url,
+            "title": title,
+            "company": catalog["company"],
+        },
+    )
+    connection.execute(
+        sa.text("UPDATE core.job_postings SET current_observation_id=:observation WHERE id=:job"),
+        {"observation": observation, "job": job},
+    )
+    return job, observation
 
 
 @pytest.fixture(scope="module")
@@ -500,6 +572,38 @@ def test_inventory_head_indexes_and_rls(engine: sa.Engine) -> None:
             "trg_job_search_documents__rebuild_salaries",
             "trg_job_search_salary_offers__validate",
         } <= triggers
+        served_child_triggers = set(
+            connection.scalars(
+                sa.text(
+                    """SELECT tgname FROM pg_trigger AS trigger_row
+                       JOIN pg_class AS relation ON relation.oid=trigger_row.tgrelid
+                       JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace
+                       WHERE namespace.nspname='history' AND NOT trigger_row.tgisinternal
+                         AND trigger_row.tgname LIKE '%__serving_finalized'"""
+                )
+            )
+        )
+        assert served_child_triggers == {
+            "trg_observation_descriptions__serving_finalized",
+            "trg_observation_locations__serving_finalized",
+            "trg_observation_salaries__serving_finalized",
+            "trg_observation_skills__serving_finalized",
+            "trg_observation_occupations__serving_finalized",
+        }
+        assert (
+            connection.scalar(
+                sa.text(
+                    """SELECT count(*) FROM pg_trigger AS trigger_row
+                   JOIN pg_class AS relation ON relation.oid=trigger_row.tgrelid
+                   JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace
+                   WHERE namespace.nspname='history'
+                     AND relation.relname IN
+                       ('job_status_events','job_change_events','job_repost_events')
+                     AND trigger_row.tgname LIKE '%serving%'"""
+                )
+            )
+            == 0
+        )
 
 
 def test_builder_search_detail_and_filters(engine: sa.Engine, catalog: dict[str, object]) -> None:
@@ -556,6 +660,7 @@ def test_builder_search_detail_and_filters(engine: sa.Engine, catalog: dict[str,
             .one()
         )
         assert detail["job_posting_id"] == catalog["job"]
+        assert detail["salary_disclosed"] is True
         assert len(detail["salary_offers_json"]) == 1
         assert "search_vector" not in detail
         assert "canonical_hash" not in detail
@@ -647,6 +752,249 @@ def test_api_output_contracts_are_explicit(engine: sa.Engine) -> None:
         assert all("boolean DEFAULT false" in arguments for arguments in defaults.values())
 
 
+def test_served_observation_finalizes_all_child_tables(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    with engine.begin() as connection:
+        job, observation = _create_observation(
+            connection,
+            catalog,
+            "serving-finalized-children",
+            "EXAMPLE_NOT_REAL_DATA Finalized Children Engineer",
+            "2026-02-06T08:00:00Z",
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_descriptions
+                       (observation_id, description_text, content_hash)
+                   VALUES (:observation, 'EXAMPLE_NOT_REAL_DATA final snapshot text', :hash)"""
+            ),
+            {"observation": observation, "hash": sha256(b"final snapshot").hexdigest()},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_locations
+                       (observation_id, location_id, relationship_type, is_primary)
+                   VALUES (:observation, :location, 'workplace', true)"""
+            ),
+            {"observation": observation, "location": catalog["location"]},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_salaries
+                       (observation_id, offer_index, amount_exact, currency, period,
+                        tax_basis, is_disclosed)
+                   VALUES (:observation, 0, 4200, 'USD', 'month', 'gross', true)"""
+            ),
+            {"observation": observation},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_skills
+                       (observation_id, skill_id, requirement_type)
+                   VALUES (:observation, :skill, 'required')"""
+            ),
+            {"observation": observation, "skill": catalog["skill"]},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_occupations
+                       (observation_id, occupation_id, is_primary)
+                   VALUES (:observation, :occupation, true)"""
+            ),
+            {"observation": observation, "occupation": catalog["occupation"]},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO serving.job_search_documents
+                       (job_posting_id, observation_id, refresh_run_id, document_version)
+                   VALUES (:job, :observation, :run, 'serving-test.v1')"""
+            ),
+            {
+                "job": job,
+                "observation": observation,
+                "run": catalog["serving_run"],
+            },
+        )
+        document = connection.execute(
+            sa.text(
+                """SELECT description_excerpt, cardinality(location_ids),
+                          cardinality(skill_ids), cardinality(occupation_ids), salary_disclosed
+                   FROM serving.job_search_documents WHERE job_posting_id=:job"""
+            ),
+            {"job": job},
+        ).one()
+        assert "final snapshot" in document.description_excerpt
+        assert tuple(document[1:]) == (1, 1, 1, True)
+
+    rejected_inserts = (
+        (
+            """INSERT INTO history.observation_descriptions
+                   (observation_id, description_text, content_hash)
+               VALUES (:observation, 'late description', :hash)""",
+            {"observation": observation, "hash": sha256(b"late description").hexdigest()},
+        ),
+        (
+            """INSERT INTO history.observation_locations
+                   (observation_id, location_id, relationship_type)
+               VALUES (:observation, :location, 'workplace')""",
+            {"observation": observation, "location": catalog["location"]},
+        ),
+        (
+            """INSERT INTO history.observation_salaries
+                   (observation_id, offer_index, tax_basis, compensation_type,
+                    is_disclosed, is_negotiable, is_estimated)
+               VALUES (:observation, 1, 'unknown', 'base_salary', false, false, false)""",
+            {"observation": observation},
+        ),
+        (
+            """INSERT INTO history.observation_skills
+                   (observation_id, skill_id, requirement_type)
+               VALUES (:observation, :skill, 'preferred')""",
+            {"observation": observation, "skill": catalog["skill"]},
+        ),
+        (
+            """INSERT INTO history.observation_occupations
+                   (observation_id, occupation_id, is_primary)
+               VALUES (:observation, :occupation, false)""",
+            {"observation": observation, "occupation": catalog["occupation"]},
+        ),
+    )
+    for sql, values in rejected_inserts:
+        assert getattr(_reject(engine, sql, values).orig, "sqlstate", None) == "23514"
+
+
+def test_served_observation_finalization_is_concurrency_safe(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    with engine.begin() as connection:
+        child_first_job, child_first_observation = _create_observation(
+            connection,
+            catalog,
+            "serving-child-first",
+            "EXAMPLE_NOT_REAL_DATA Child First Engineer",
+            "2026-02-07T08:00:00Z",
+        )
+
+    child_connection = engine.connect()
+    child_transaction = child_connection.begin()
+    try:
+        child_connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+        child_connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_skills
+                       (observation_id, skill_id, requirement_type)
+                   VALUES (:observation, :skill, 'required')"""
+            ),
+            {"observation": child_first_observation, "skill": catalog["skill"]},
+        )
+        started = Event()
+
+        def create_child_first_document() -> None:
+            with engine.begin() as connection:
+                connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+                connection.execute(sa.text("SET LOCAL statement_timeout='10s'"))
+                started.set()
+                connection.execute(
+                    sa.text(
+                        """INSERT INTO serving.job_search_documents
+                               (job_posting_id, observation_id, refresh_run_id,
+                                document_version)
+                           VALUES (:job, :observation, :run, 'serving-test.v1')"""
+                    ),
+                    {
+                        "job": child_first_job,
+                        "observation": child_first_observation,
+                        "run": catalog["serving_run"],
+                    },
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(create_child_first_document)
+            assert started.wait(2)
+            time.sleep(0.2)
+            assert not future.done()
+            child_transaction.commit()
+            future.result(timeout=10)
+    finally:
+        if child_transaction.is_active:
+            child_transaction.rollback()
+        child_connection.close()
+
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    """SELECT cardinality(skill_ids) FROM serving.job_search_documents
+                   WHERE job_posting_id=:job"""
+                ),
+                {"job": child_first_job},
+            )
+            == 1
+        )
+
+    with engine.begin() as connection:
+        document_first_job, document_first_observation = _create_observation(
+            connection,
+            catalog,
+            "serving-document-first",
+            "EXAMPLE_NOT_REAL_DATA Document First Engineer",
+            "2026-02-08T08:00:00Z",
+        )
+
+    document_connection = engine.connect()
+    document_transaction = document_connection.begin()
+    try:
+        document_connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+        document_connection.execute(
+            sa.text(
+                """INSERT INTO serving.job_search_documents
+                       (job_posting_id, observation_id, refresh_run_id, document_version)
+                   VALUES (:job, :observation, :run, 'serving-test.v1')"""
+            ),
+            {
+                "job": document_first_job,
+                "observation": document_first_observation,
+                "run": catalog["serving_run"],
+            },
+        )
+        started = Event()
+
+        def insert_document_first_child() -> str | None:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+                    connection.execute(sa.text("SET LOCAL statement_timeout='10s'"))
+                    started.set()
+                    connection.execute(
+                        sa.text(
+                            """INSERT INTO history.observation_skills
+                                   (observation_id, skill_id, requirement_type)
+                               VALUES (:observation, :skill, 'required')"""
+                        ),
+                        {
+                            "observation": document_first_observation,
+                            "skill": catalog["skill"],
+                        },
+                    )
+            except DBAPIError as error:
+                sqlstate = getattr(error.orig, "sqlstate", None)
+                return sqlstate if isinstance(sqlstate, str) else None
+            return None
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(insert_document_first_child)
+            assert started.wait(2)
+            time.sleep(0.2)
+            assert not future.done()
+            document_transaction.commit()
+            assert future.result(timeout=10) == "23514"
+    finally:
+        if document_transaction.is_active:
+            document_transaction.rollback()
+        document_connection.close()
+
+
 def test_stale_hiding_and_concurrent_current_update(
     engine: sa.Engine, catalog: dict[str, object]
 ) -> None:
@@ -735,6 +1083,224 @@ def test_stale_hiding_and_concurrent_current_update(
                 "UPDATE core.job_postings SET current_observation_id=:observation WHERE id=:job"
             ),
             {"observation": catalog["observation"], "job": catalog["job"]},
+        )
+
+
+def test_description_redaction_invalidates_documents_concurrently(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    with engine.begin() as connection:
+        redaction_first_job, redaction_first_observation = _create_observation(
+            connection,
+            catalog,
+            "serving-redaction-first",
+            "EXAMPLE_NOT_REAL_DATA Retention Engineer",
+            "2026-02-09T08:00:00Z",
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_descriptions
+                       (observation_id, description_text, content_hash)
+                   VALUES (:observation, 'redactionfirstuniqueterm', :hash)"""
+            ),
+            {
+                "observation": redaction_first_observation,
+                "hash": sha256(b"redactionfirstuniqueterm").hexdigest(),
+            },
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO serving.job_search_documents
+                       (job_posting_id, observation_id, refresh_run_id, document_version)
+                   VALUES (:job, :observation, :run, 'serving-test.v1')"""
+            ),
+            {
+                "job": redaction_first_job,
+                "observation": redaction_first_observation,
+                "run": catalog["serving_run"],
+            },
+        )
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    "SELECT count(*) FROM api.search_jobs_v1(p_query=>'redactionfirstuniqueterm')"
+                )
+            )
+            == 1
+        )
+
+    redaction_connection = engine.connect()
+    redaction_transaction = redaction_connection.begin()
+    try:
+        redaction_connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+        redaction_connection.execute(
+            sa.text(
+                """UPDATE history.observation_descriptions
+                   SET description_text=NULL, redaction_status='redacted'
+                   WHERE observation_id=:observation"""
+            ),
+            {"observation": redaction_first_observation},
+        )
+        started = Event()
+
+        def rebuild_after_redaction() -> None:
+            with engine.begin() as connection:
+                connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+                connection.execute(sa.text("SET LOCAL statement_timeout='10s'"))
+                started.set()
+                connection.execute(
+                    sa.text(
+                        """INSERT INTO serving.job_search_documents
+                               (job_posting_id, observation_id, refresh_run_id,
+                                document_version)
+                           VALUES (:job, :observation, :run, 'serving-test.v1')"""
+                    ),
+                    {
+                        "job": redaction_first_job,
+                        "observation": redaction_first_observation,
+                        "run": catalog["serving_run"],
+                    },
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(rebuild_after_redaction)
+            assert started.wait(2)
+            time.sleep(0.2)
+            assert not future.done()
+            redaction_transaction.commit()
+            future.result(timeout=10)
+    finally:
+        if redaction_transaction.is_active:
+            redaction_transaction.rollback()
+        redaction_connection.close()
+
+    with engine.connect() as connection:
+        rebuilt = connection.execute(
+            sa.text(
+                """SELECT description_excerpt, search_vector::text
+                   FROM serving.job_search_documents WHERE job_posting_id=:job"""
+            ),
+            {"job": redaction_first_job},
+        ).one()
+        assert rebuilt.description_excerpt is None
+        assert "redactionfirstuniqueterm" not in rebuilt.search_vector
+        assert (
+            connection.scalar(
+                sa.text(
+                    "SELECT count(*) FROM api.search_jobs_v1(p_query=>'redactionfirstuniqueterm')"
+                )
+            )
+            == 0
+        )
+
+    with engine.begin() as connection:
+        document_first_job, document_first_observation = _create_observation(
+            connection,
+            catalog,
+            "serving-redaction-document-first",
+            "EXAMPLE_NOT_REAL_DATA Retention Race Engineer",
+            "2026-02-10T08:00:00Z",
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO history.observation_descriptions
+                       (observation_id, description_text, content_hash)
+                   VALUES (:observation, 'documentfirstuniqueterm', :hash)"""
+            ),
+            {
+                "observation": document_first_observation,
+                "hash": sha256(b"documentfirstuniqueterm").hexdigest(),
+            },
+        )
+
+    document_connection = engine.connect()
+    document_transaction = document_connection.begin()
+    try:
+        document_connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+        document_connection.execute(
+            sa.text(
+                """INSERT INTO serving.job_search_documents
+                       (job_posting_id, observation_id, refresh_run_id, document_version)
+                   VALUES (:job, :observation, :run, 'serving-test.v1')"""
+            ),
+            {
+                "job": document_first_job,
+                "observation": document_first_observation,
+                "run": catalog["serving_run"],
+            },
+        )
+        started = Event()
+
+        def redact_after_document() -> None:
+            with engine.begin() as connection:
+                connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+                connection.execute(sa.text("SET LOCAL statement_timeout='10s'"))
+                started.set()
+                connection.execute(
+                    sa.text(
+                        """UPDATE history.observation_descriptions
+                           SET description_text=NULL, redaction_status='expired'
+                           WHERE observation_id=:observation"""
+                    ),
+                    {"observation": document_first_observation},
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(redact_after_document)
+            assert started.wait(2)
+            time.sleep(0.2)
+            assert not future.done()
+            document_transaction.commit()
+            future.result(timeout=10)
+    finally:
+        if document_transaction.is_active:
+            document_transaction.rollback()
+        document_connection.close()
+
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    """SELECT count(*) FROM serving.job_search_documents
+                   WHERE job_posting_id=:job"""
+                ),
+                {"job": document_first_job},
+            )
+            == 0
+        )
+        assert (
+            connection.scalar(
+                sa.text(
+                    "SELECT count(*) FROM api.search_jobs_v1(p_query=>'documentfirstuniqueterm')"
+                )
+            )
+            == 0
+        )
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """INSERT INTO serving.job_search_documents
+                       (job_posting_id, observation_id, refresh_run_id, document_version)
+                   VALUES (:job, :observation, :run, 'serving-test.v1')"""
+            ),
+            {
+                "job": document_first_job,
+                "observation": document_first_observation,
+                "run": catalog["serving_run"],
+            },
+        )
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    """SELECT description_excerpt IS NULL
+                   FROM serving.job_search_documents WHERE job_posting_id=:job"""
+                ),
+                {"job": document_first_job},
+            )
+            is True
         )
 
 
@@ -1181,6 +1747,59 @@ def test_dashboard_functions_and_validation(engine: sa.Engine, catalog: dict[str
             ),
             {"source": source_key, "run": analytics_run},
         )
+        location_key = _one(
+            connection,
+            """INSERT INTO analytics.dim_locations
+                   (location_id, resolution_key, location_type, country_code,
+                    admin_level_1, admin_level_2, locality, canonical_label,
+                    normalized_label, latitude, longitude, location_updated_at)
+               SELECT id, resolution_key, location_type, country_code, admin_level_1,
+                      admin_level_2, locality, canonical_label, normalized_label,
+                      latitude, longitude, updated_at
+               FROM core.locations WHERE id=:location RETURNING location_key""",
+            {"location": catalog["location"]},
+        )
+        skill_key = _one(
+            connection,
+            """INSERT INTO analytics.dim_skills
+                   (skill_id, taxonomy_version_id, taxonomy_version, canonical_code,
+                    canonical_name, normalized_name, skill_type, parent_skill_id,
+                    is_active, skill_updated_at)
+               SELECT skill.id, skill.taxonomy_version_id, version.version,
+                      skill.canonical_code, skill.canonical_name, skill.normalized_name,
+                      skill.skill_type, skill.parent_id, skill.is_active, skill.updated_at
+               FROM taxonomy.skills AS skill
+               JOIN taxonomy.taxonomy_versions AS version
+                 ON version.id=skill.taxonomy_version_id
+               WHERE skill.id=:skill RETURNING skill_key""",
+            {"skill": catalog["skill"]},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO analytics.daily_location_demand
+                       (metric_date, location_key, source_key, work_mode,
+                        active_posting_count, refresh_run_id, calculation_version)
+                   VALUES
+                       ('2026-02-01', :location, :source, 'hybrid', 2, :run,
+                        'serving-dashboard.v1'),
+                       ('2026-02-01', :location, :source, 'remote', 3, :run,
+                        'serving-dashboard.v1')"""
+            ),
+            {"location": location_key, "source": source_key, "run": analytics_run},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO analytics.daily_skill_demand
+                       (metric_date, skill_key, source_key, requirement_type,
+                        active_posting_count, refresh_run_id, calculation_version)
+                   VALUES
+                       ('2026-02-01', :skill, :source, 'preferred', 2, :run,
+                        'serving-dashboard.v1'),
+                       ('2026-02-01', :skill, :source, 'required', 3, :run,
+                        'serving-dashboard.v1')"""
+            ),
+            {"skill": skill_key, "source": source_key, "run": analytics_run},
+        )
     with engine.connect() as connection:
         row = connection.execute(
             sa.text(
@@ -1191,6 +1810,55 @@ def test_dashboard_functions_and_validation(engine: sa.Engine, catalog: dict[str
         ).one()
         assert row.active_posting_count == 5
         assert row.new_posting_count == 2
+        location_full = [
+            tuple(row)
+            for row in connection.execute(
+                sa.text(
+                    """SELECT location_id, work_mode FROM api.location_demand_v1(
+                           '2026-02-01', '2026-02-01', p_limit=>10, p_offset=>0)"""
+                )
+            ).all()
+        ]
+        location_pages: list[tuple[object, ...]] = []
+        for offset in (0, 1):
+            location_pages.extend(
+                tuple(row)
+                for row in connection.execute(
+                    sa.text(
+                        """SELECT location_id, work_mode FROM api.location_demand_v1(
+                               '2026-02-01', '2026-02-01',
+                               p_limit=>1, p_offset=>:offset)"""
+                    ),
+                    {"offset": offset},
+                ).all()
+            )
+        assert location_pages == location_full
+        assert len(set(location_pages)) == 2
+
+        skill_full = [
+            tuple(row)
+            for row in connection.execute(
+                sa.text(
+                    """SELECT skill_id, requirement_type FROM api.skill_demand_v1(
+                           '2026-02-01', '2026-02-01', p_limit=>10, p_offset=>0)"""
+                )
+            ).all()
+        ]
+        skill_pages: list[tuple[object, ...]] = []
+        for offset in (0, 1):
+            skill_pages.extend(
+                tuple(row)
+                for row in connection.execute(
+                    sa.text(
+                        """SELECT skill_id, requirement_type FROM api.skill_demand_v1(
+                               '2026-02-01', '2026-02-01',
+                               p_limit=>1, p_offset=>:offset)"""
+                    ),
+                    {"offset": offset},
+                ).all()
+            )
+        assert skill_pages == skill_full
+        assert len(set(skill_pages)) == 2
     assert (
         getattr(
             _reject(
@@ -1304,6 +1972,19 @@ def test_zz_downgrade_and_reupgrade(engine: sa.Engine) -> None:
         assert "serving" not in inspector.get_schema_names()
         assert "api" not in inspector.get_schema_names()
         assert "analytics" in inspector.get_schema_names()
+        with check_engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    sa.text(
+                        """SELECT count(*) FROM pg_trigger AS trigger_row
+                       JOIN pg_class AS relation ON relation.oid=trigger_row.tgrelid
+                       JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace
+                       WHERE namespace.nspname='history'
+                         AND trigger_row.tgname LIKE '%serving%'"""
+                    )
+                )
+                == 0
+            )
     finally:
         check_engine.dispose()
     command.upgrade(config, "head")

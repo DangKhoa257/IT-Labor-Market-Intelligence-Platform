@@ -31,6 +31,11 @@ the salary projection from immutable history, so loaders never copy or mutate se
 Both the document builder and refresh-lineage mutation lock the same refresh-run row; salary
 validation and rebuilding likewise lock the parent document.
 
+Creating a serving document also finalizes its observation snapshot against later description,
+location, salary, skill, and occupation inserts. The builder and child triggers share the parent
+history-observation lock, making child-first and document-first transactions deterministic. Event
+tables remain unaffected.
+
 The weighted `simple`-configuration search vector ranks normalized title and company most highly,
 then occupation and skill labels, followed by location and description. `search_jobs_v1` uses
 `websearch_to_tsquery`, deterministic ordering, array filters, status filters, and currency-safe
@@ -38,6 +43,10 @@ salary overlap. Public inputs reject NULL pagination/sort values, queries over 5
 filter arrays with NULL elements or over 100 members. Relevance ties use posted time and posting ID;
 blank relevance searches use newest posting time and posting ID. Search results omit description
 text; `get_job_v1` returns the current public job detail.
+
+Valid description redaction or expiry immediately deletes the matching serving document in the
+same transaction, so neither RPCs nor full-text search retain the excerpt. Salary cache rows
+cascade-delete, history remains unchanged, and a later rebuild contains no redacted text.
 
 RPCs read through `v_current_job_cards`, which joins a serving document to the posting's current
 observation pointer. A missing or changed pointer immediately hides a stale document even before a
@@ -54,7 +63,9 @@ reading private relations.
 
 Dashboard functions expose stable explicit table returns with source/company, location,
 occupation, skill, and salary descriptors. Unknown location/occupation inclusion defaults to
-false, and no API return type depends on a private serving view composite type.
+false, and no API return type depends on a private serving view composite type. Location and skill
+pagination order by their complete public grains. Job detail includes `salary_disclosed`
+immediately before salary offers.
 
 ## Refresh and downgrade behavior
 
@@ -63,4 +74,5 @@ referenced refresh run's source and calculation version from being reassigned. C
 rebuildable projections; history and analytics remain authoritative.
 
 Downgrade removes the eight exact RPC signatures, internal views, triggers, functions, indexes,
-tables, and schemas without `CASCADE`, returning the database to Migration 005.
+tables, and schemas without `CASCADE`, returning the database to Migration 005. Cross-schema
+history triggers are removed before their serving functions and schema.

@@ -185,7 +185,7 @@ def upgrade() -> None:
                     USING ERRCODE = '23514';
             END IF;
             SELECT * INTO observation FROM history.job_observations
-            WHERE id = NEW.observation_id;
+            WHERE id = NEW.observation_id FOR UPDATE;
             IF NOT FOUND OR observation.job_posting_id != NEW.job_posting_id
                OR observation.source_id != posting.source_id THEN
                 RAISE EXCEPTION 'serving document observation lineage mismatch'
@@ -493,6 +493,82 @@ def upgrade() -> None:
         FOR EACH ROW EXECUTE FUNCTION serving.prevent_refresh_lineage_mutation()"""
     )
 
+    op.execute(
+        """
+        CREATE FUNCTION serving.prevent_served_observation_child_insert()
+        RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = pg_catalog, serving
+        AS $$
+        BEGIN
+            PERFORM 1 FROM history.job_observations
+            WHERE id = NEW.observation_id FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'historical child observation does not exist'
+                    USING ERRCODE = '23514';
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM serving.job_search_documents
+                WHERE observation_id = NEW.observation_id
+            ) THEN
+                RAISE EXCEPTION 'served observation snapshot is finalized'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    for table_name in (
+        "observation_descriptions",
+        "observation_locations",
+        "observation_salaries",
+        "observation_skills",
+        "observation_occupations",
+    ):
+        op.execute(
+            f"""CREATE TRIGGER trg_{table_name}__serving_finalized
+            BEFORE INSERT ON history.{table_name}
+            FOR EACH ROW
+            EXECUTE FUNCTION serving.prevent_served_observation_child_insert()"""
+        )
+
+    op.execute(
+        """
+        CREATE FUNCTION serving.invalidate_redacted_description_document()
+        RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = pg_catalog, serving
+        AS $$
+        BEGIN
+            IF OLD.description_text IS NOT NULL
+               AND NEW.description_text IS NULL
+               AND NEW.redaction_status IN ('redacted', 'expired')
+               AND OLD.redaction_status NOT IN ('redacted', 'expired') THEN
+                PERFORM 1 FROM serving.job_search_documents
+                WHERE observation_id = NEW.observation_id FOR UPDATE;
+
+                PERFORM 1 FROM history.job_observations
+                WHERE id = NEW.observation_id FOR UPDATE;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'description observation does not exist'
+                        USING ERRCODE = '23514';
+                END IF;
+
+                DELETE FROM serving.job_search_documents
+                WHERE observation_id = NEW.observation_id;
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """CREATE TRIGGER trg_observation_descriptions__serving_redaction
+        BEFORE UPDATE OF description_text, redaction_status
+        ON history.observation_descriptions
+        FOR EACH ROW
+        EXECUTE FUNCTION serving.invalidate_redacted_description_document()"""
+    )
+
     op.execute("ALTER TABLE serving.refresh_runs ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE serving.job_search_documents ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE serving.job_search_salary_offers ENABLE ROW LEVEL SECURITY")
@@ -765,7 +841,8 @@ def _create_get_job_function() -> None:
           description_excerpt TEXT, employment_type_code TEXT, seniority_level_code TEXT,
           work_mode TEXT, status TEXT, posted_at TIMESTAMPTZ, expires_at TIMESTAMPTZ,
           first_seen_at TIMESTAMPTZ, last_seen_at TIMESTAMPTZ, locations_json JSONB,
-          occupations_json JSONB, skills_json JSONB, salary_offers_json JSONB,
+          occupations_json JSONB, skills_json JSONB, salary_disclosed BOOLEAN,
+          salary_offers_json JSONB,
           document_version TEXT, updated_at TIMESTAMPTZ
         ) LANGUAGE sql SECURITY DEFINER STABLE
         SET search_path = pg_catalog, api, serving AS $$
@@ -775,7 +852,7 @@ def _create_get_job_function() -> None:
                  card.description_excerpt, card.employment_type_code::text,
                  card.seniority_level_code::text, card.work_mode::text, card.status::text, card.posted_at,
                  card.expires_at, card.first_seen_at, card.last_seen_at, card.locations_json,
-                 card.occupations_json, card.skills_json,
+                 card.occupations_json, card.skills_json, card.salary_disclosed,
                  COALESCE((SELECT jsonb_agg(jsonb_build_object(
                     'currency', salary.currency, 'period', salary.period,
                     'tax_basis', salary.tax_basis, 'compensation_type', salary.compensation_type,
@@ -877,6 +954,11 @@ def _create_dimension_dashboard_functions(common: str) -> None:
             filters = "AND (p_include_unknown OR view.occupation_id IS NOT NULL)"
         elif view_prefix == "skill":
             filters = "AND (p_requirement_types IS NULL OR view.requirement_type=ANY(p_requirement_types))"
+        order_suffix = ""
+        if view_prefix == "location":
+            order_suffix = ", view.work_mode"
+        elif view_prefix == "skill":
+            order_suffix = ", view.requirement_type"
         op.execute(
             f"""
             CREATE FUNCTION api.{name}(
@@ -900,7 +982,8 @@ def _create_dimension_dashboard_functions(common: str) -> None:
                 AND (p_source_ids IS NULL OR view.source_id=ANY(p_source_ids))
                 AND (p_{ids_name} IS NULL OR view.{view_prefix}_id=ANY(p_{ids_name}))
                 {filters}
-              ORDER BY view.metric_date, view.source_id, view.{view_prefix}_id NULLS LAST
+              ORDER BY view.metric_date, view.source_id,
+                       view.{view_prefix}_id NULLS LAST{order_suffix}
               LIMIT p_limit OFFSET p_offset; END; $$
             """
         )
@@ -1003,6 +1086,20 @@ def _apply_grants() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        "DROP TRIGGER trg_observation_descriptions__serving_redaction "
+        "ON history.observation_descriptions"
+    )
+    for table_name in (
+        "observation_descriptions",
+        "observation_locations",
+        "observation_salaries",
+        "observation_skills",
+        "observation_occupations",
+    ):
+        op.execute(f"DROP TRIGGER trg_{table_name}__serving_finalized ON history.{table_name}")
+    op.execute("DROP FUNCTION serving.invalidate_redacted_description_document()")
+    op.execute("DROP FUNCTION serving.prevent_served_observation_child_insert()")
     for signature in _function_signatures():
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM {CLIENT_ROLES}")
         op.execute(f"DROP FUNCTION {signature}")

@@ -304,6 +304,13 @@ Before validating refresh lineage, lock the referenced `serving.refresh_runs` ro
 `FOR UPDATE`. Document writes and refresh-run source/version mutation therefore serialize on the
 same row.
 
+The builder also locks the matching `history.job_observations` row with `FOR UPDATE` before reading
+any historical child. `serving.prevent_served_observation_child_insert()` attaches to the five
+description, location, salary, skill, and occupation child tables. It takes that same observation
+lock and rejects inserts with SQLSTATE `23514` once a serving document exists. Children committed
+first are included by a waiting builder; a child waiting behind a committed document is rejected.
+Status, change, and repost events are not finalized by serving.
+
 Even after locking, current views must filter:
 
 ```text
@@ -311,6 +318,13 @@ document.observation_id = core.job_postings.current_observation_id
 ```
 
 so stale documents disappear until refreshed.
+
+A valid one-way description redaction or expiry invalidates the matching serving document in the
+same transaction. The trigger locks an existing serving document first, then the history
+observation, re-checks, and deletes the document. This ordering also handles an initially invisible
+uncommitted document insert through the shared observation lock. Historical rows are never changed
+or deleted by serving; salary cache rows disappear only through the document's cascade. A later
+rebuild has no excerpt or redacted search terms.
 
 ## Indexes
 
@@ -603,6 +617,9 @@ updated_at
 Do not return raw HTML, ingestion payloads, quality review notes, internal
 hashes, crawler errors, or authorization data.
 
+The explicit return contract includes `salary_disclosed BOOLEAN` immediately before
+`salary_offers_json`.
+
 ---
 
 # 12. Dashboard RPC contracts
@@ -624,6 +641,10 @@ date window <= 366 days
 ```
 
 Paginated dashboard limits and offsets must not be `NULL`.
+
+Pagination ordering covers the complete public grain. Location demand orders by metric date,
+source ID, location ID nulls last, and work mode. Skill demand orders by metric date, source ID,
+skill ID, and requirement type.
 
 ## `api.market_overview_v1`
 
@@ -931,7 +952,9 @@ Verify GIN search/array indexes and salary/date indexes exist.
 
 ### Downgrade/re-upgrade
 
-Downgrade to 005 removes only `api` and `serving`; re-upgrade succeeds.
+Downgrade to 005 removes only `api` and `serving`; re-upgrade succeeds. Every Migration 006 trigger
+on the five history child tables, including description redaction invalidation, is dropped before
+its serving trigger function or schema.
 
 CI runs migration tests, full pytest, Ruff, Black, and MyPy.
 
