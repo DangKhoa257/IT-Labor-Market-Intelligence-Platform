@@ -635,16 +635,15 @@ def test_api_output_contracts_are_explicit(engine: sa.Engine) -> None:
             )
         )
         assert private_composite_count == 0
-        defaults = dict(
-            connection.execute(
-                sa.text(
-                    """SELECT p.proname, pg_get_function_arguments(p.oid)
+        defaults_rows = connection.execute(
+            sa.text(
+                """SELECT p.proname, pg_get_function_arguments(p.oid)
                        FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
                        WHERE n.nspname='api' AND p.proname IN
                          ('location_demand_v1','occupation_demand_v1','salary_metrics_v1')"""
-                )
-            ).all()
-        )
+            )
+        ).all()
+        defaults: dict[str, str] = {str(row[0]): str(row[1]) for row in defaults_rows}
         assert all("boolean DEFAULT false" in arguments for arguments in defaults.values())
 
 
@@ -908,14 +907,17 @@ def test_salary_projection_is_atomic_and_history_is_unchanged(
         )
 
     with engine.connect() as connection:
-        salary_rows = connection.execute(
-            sa.text(
-                """SELECT observation_salary_id, refresh_run_id
+        salary_rows = [
+            (row[0], row[1])
+            for row in connection.execute(
+                sa.text(
+                    """SELECT observation_salary_id, refresh_run_id
                    FROM serving.job_search_salary_offers
                    WHERE job_posting_id=:job ORDER BY observation_salary_id"""
-            ),
-            {"job": catalog["job"]},
-        ).all()
+                ),
+                {"job": catalog["job"]},
+            ).all()
+        ]
         assert salary_rows == [(salary_b1, run_b), (salary_b2, run_b)]
         assert (
             connection.scalar(
@@ -942,18 +944,15 @@ def test_salary_projection_is_atomic_and_history_is_unchanged(
             {"run": lineage_run, "job": catalog["job"]},
         )
     with engine.connect() as connection:
-        assert (
-            set(
-                connection.scalars(
-                    sa.text(
-                        """SELECT refresh_run_id FROM serving.job_search_salary_offers
+        assert set(
+            connection.scalars(
+                sa.text(
+                    """SELECT refresh_run_id FROM serving.job_search_salary_offers
                        WHERE job_posting_id=:job"""
-                    ),
-                    {"job": catalog["job"]},
-                )
+                ),
+                {"job": catalog["job"]},
             )
-            == {lineage_run}
-        )
+        ) == {lineage_run}
 
     with engine.begin() as connection:
         connection.execute(
@@ -1126,18 +1125,15 @@ def test_refresh_run_lineage_is_concurrency_safe(
             )
             == pending_run
         )
-        assert (
-            set(
-                connection.scalars(
-                    sa.text(
-                        """SELECT refresh_run_id FROM serving.job_search_salary_offers
+        assert set(
+            connection.scalars(
+                sa.text(
+                    """SELECT refresh_run_id FROM serving.job_search_salary_offers
                        WHERE job_posting_id=:job"""
-                    ),
-                    {"job": catalog["job"]},
-                )
+                ),
+                {"job": catalog["job"]},
             )
-            == {pending_run}
-        )
+        ) == {pending_run}
         connection.execute(
             sa.text(
                 """UPDATE serving.job_search_documents
