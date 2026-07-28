@@ -944,15 +944,18 @@ def test_salary_projection_is_atomic_and_history_is_unchanged(
             {"run": lineage_run, "job": catalog["job"]},
         )
     with engine.connect() as connection:
-        assert set(
-            connection.scalars(
-                sa.text(
-                    """SELECT refresh_run_id FROM serving.job_search_salary_offers
+        assert (
+            set(
+                connection.scalars(
+                    sa.text(
+                        """SELECT refresh_run_id FROM serving.job_search_salary_offers
                        WHERE job_posting_id=:job"""
-                ),
-                {"job": catalog["job"]},
+                    ),
+                    {"job": catalog["job"]},
+                )
             )
-        ) == {lineage_run}
+            == {lineage_run}
+        )
 
     with engine.begin() as connection:
         connection.execute(
@@ -1125,15 +1128,18 @@ def test_refresh_run_lineage_is_concurrency_safe(
             )
             == pending_run
         )
-        assert set(
-            connection.scalars(
-                sa.text(
-                    """SELECT refresh_run_id FROM serving.job_search_salary_offers
+        assert (
+            set(
+                connection.scalars(
+                    sa.text(
+                        """SELECT refresh_run_id FROM serving.job_search_salary_offers
                        WHERE job_posting_id=:job"""
-                ),
-                {"job": catalog["job"]},
+                    ),
+                    {"job": catalog["job"]},
+                )
             )
-        ) == {pending_run}
+            == {pending_run}
+        )
         connection.execute(
             sa.text(
                 """UPDATE serving.job_search_documents
