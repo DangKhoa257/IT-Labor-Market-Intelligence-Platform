@@ -300,6 +300,10 @@ to_tsvector('simple', ...)
 13. Set `updated_at = now()`.
 14. Raise SQLSTATE `23514` on mismatch.
 
+Before validating refresh lineage, lock the referenced `serving.refresh_runs` row with
+`FOR UPDATE`. Document writes and refresh-run source/version mutation therefore serialize on the
+same row.
+
 Even after locking, current views must filter:
 
 ```text
@@ -370,6 +374,12 @@ Create `serving.validate_search_salary_offer()` trigger:
 - set updated time;
 - reject mismatch with SQLSTATE `23514`.
 
+Create an `AFTER INSERT OR UPDATE` trigger on `serving.job_search_documents` that locks the parent
+document, deletes its existing serving salary rows, and inserts every salary belonging to
+`NEW.observation_id` directly from immutable history with `NEW.refresh_run_id`. The projection is
+rebuilt in the document transaction; loaders never submit copied salary fields. Salary validation
+also locks the parent document and remains defense in depth.
+
 Indexes:
 
 ```text
@@ -430,6 +440,11 @@ calculated_at
 
 Unknown analytics location/occupation rows expose null operational IDs and
 documented labels.
+
+The company view also exposes source display name and company type. Location rows expose country
+code, both administrative levels, and locality. Occupation rows expose occupation code and
+taxonomy version. Skill rows expose skill code, skill type, and taxonomy version. Salary metrics
+have an explicit public column contract rather than a private view composite return type.
 
 ---
 
@@ -550,7 +565,14 @@ Limits:
 0 <= offset <= 1000
 salary values nonnegative
 minimum <= maximum
+query length <= 500 characters
+every filter array has at most 100 elements and contains no NULL element
 ```
+
+`limit`, `offset`, and `sort` must not be `NULL`. A nonblank relevance search orders by rank
+descending, posted time descending with nulls last, then posting ID. Blank relevance search orders
+by posted time descending with nulls last, then posting ID. Newest and oldest include the same
+deterministic posting-ID tie breaker.
 
 Return `total_count` before pagination. Salary JSON ordering must be
 deterministic.
@@ -601,6 +623,8 @@ date window <= 366 days
 0 <= offset <= 5000
 ```
 
+Paginated dashboard limits and offsets must not be `NULL`.
+
 ## `api.market_overview_v1`
 
 Filters:
@@ -624,7 +648,7 @@ Filters:
 date range, source IDs, company IDs, limit, offset
 ```
 
-Return daily company/source rows.
+Return daily company/source rows including source display name and company type.
 
 ## `api.location_demand_v1`
 
@@ -635,6 +659,9 @@ date range, source IDs, location IDs, work modes,
 include_unknown, limit, offset
 ```
 
+`include_unknown` defaults to `false`. Return country code, both administrative levels, and
+locality.
+
 ## `api.occupation_demand_v1`
 
 Filters:
@@ -644,6 +671,8 @@ date range, source IDs, occupation IDs,
 include_unknown, limit, offset
 ```
 
+`include_unknown` defaults to `false`. Return occupation code and taxonomy version.
+
 ## `api.skill_demand_v1`
 
 Filters:
@@ -651,6 +680,8 @@ Filters:
 ```text
 date range, source IDs, skill IDs, requirement types, limit, offset
 ```
+
+Return skill code, skill type, and taxonomy version.
 
 ## `api.salary_metrics_v1`
 
@@ -662,6 +693,9 @@ currency, period, tax basis, include_unknown_dimensions, limit, offset
 ```
 
 Never combine currency, period, or tax basis.
+
+`include_unknown_dimensions` defaults to `false`. The function uses an explicit `RETURNS TABLE`
+declaration for its stable public fields and never returns a private serving view row type.
 
 All functions return operational IDs and labels, never analytics surrogate keys.
 
@@ -692,7 +726,9 @@ Do not grant `serving` usage to `anon` or `authenticated`.
 
 Enable RLS on all three serving tables. Create no client policies.
 
-Grant `service_role` cache DML and required sequence usage.
+Grant `service_role` DML on refresh runs and job search documents plus required sequence usage.
+Grant only `SELECT` on `serving.job_search_salary_offers`; trusted database triggers own salary
+insertion, replacement, and deletion.
 
 Revoke all view privileges from:
 

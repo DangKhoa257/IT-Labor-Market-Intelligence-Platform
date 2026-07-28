@@ -191,7 +191,8 @@ def upgrade() -> None:
                 RAISE EXCEPTION 'serving document observation lineage mismatch'
                     USING ERRCODE = '23514';
             END IF;
-            SELECT * INTO run FROM serving.refresh_runs WHERE id = NEW.refresh_run_id;
+            SELECT * INTO run FROM serving.refresh_runs
+            WHERE id = NEW.refresh_run_id FOR UPDATE;
             IF NOT FOUND OR (run.source_id IS NOT NULL
                              AND run.source_id != observation.source_id)
                OR NEW.document_version IS DISTINCT FROM run.document_version THEN
@@ -375,6 +376,12 @@ def upgrade() -> None:
         SET search_path = pg_catalog, serving
         AS $$
         BEGIN
+            PERFORM 1 FROM serving.job_search_documents
+            WHERE job_posting_id = NEW.job_posting_id FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'serving salary requires parent document'
+                    USING ERRCODE = '23514';
+            END IF;
             IF NOT EXISTS (
                 SELECT 1 FROM history.observation_salaries AS salary
                 JOIN serving.job_search_documents AS document
@@ -409,6 +416,48 @@ def upgrade() -> None:
         """CREATE TRIGGER trg_job_search_salary_offers__validate
         BEFORE INSERT OR UPDATE ON serving.job_search_salary_offers
         FOR EACH ROW EXECUTE FUNCTION serving.validate_search_salary_offer()"""
+    )
+    op.execute(
+        """
+        CREATE FUNCTION serving.rebuild_job_search_salary_offers()
+        RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path = pg_catalog, serving
+        AS $$
+        BEGIN
+            PERFORM 1 FROM serving.job_search_documents
+            WHERE job_posting_id = NEW.job_posting_id FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'serving salary projection requires parent document'
+                    USING ERRCODE = '23514';
+            END IF;
+
+            DELETE FROM serving.job_search_salary_offers
+            WHERE job_posting_id = NEW.job_posting_id;
+            INSERT INTO serving.job_search_salary_offers (
+                job_posting_id, observation_salary_id, currency, period, tax_basis,
+                compensation_type, is_disclosed, is_negotiable, is_estimated,
+                amount_min, amount_max, amount_exact, normalized_monthly_min,
+                normalized_monthly_max, normalized_annual_min, normalized_annual_max,
+                refresh_run_id
+            )
+            SELECT NEW.job_posting_id, salary.id, salary.currency, salary.period,
+                   salary.tax_basis, salary.compensation_type, salary.is_disclosed,
+                   salary.is_negotiable, salary.is_estimated, salary.amount_min,
+                   salary.amount_max, salary.amount_exact, salary.normalized_monthly_min,
+                   salary.normalized_monthly_max, salary.normalized_annual_min,
+                   salary.normalized_annual_max, NEW.refresh_run_id
+            FROM history.observation_salaries AS salary
+            WHERE salary.observation_id = NEW.observation_id
+            ORDER BY salary.id;
+            RETURN NEW;
+        END;
+        $$
+        """
+    )
+    op.execute(
+        """CREATE TRIGGER trg_job_search_documents__rebuild_salaries
+        AFTER INSERT OR UPDATE ON serving.job_search_documents
+        FOR EACH ROW EXECUTE FUNCTION serving.rebuild_job_search_salary_offers()"""
     )
     for statement in (
         "CREATE INDEX ix_search_salary_offers__job_id ON serving.job_search_salary_offers (job_posting_id)",
@@ -478,7 +527,7 @@ def _create_views() -> None:
     op.execute(
         """
         CREATE VIEW serving.v_market_overview_daily AS
-        SELECT metric.metric_date, source.source_id, source.slug AS source_slug,
+        SELECT metric.metric_date, source.source_id, source.slug::text AS source_slug,
                metric.employment_type_code, metric.seniority_level_code, metric.work_mode,
                metric.active_posting_count, metric.new_posting_count,
                metric.closed_posting_count, metric.expired_posting_count,
@@ -492,8 +541,10 @@ def _create_views() -> None:
     op.execute(
         """
         CREATE VIEW serving.v_company_hiring_daily AS
-        SELECT metric.metric_date, source.source_id, source.slug AS source_slug,
-               company.company_id, company.canonical_name AS company_name,
+        SELECT metric.metric_date, source.source_id, source.slug::text AS source_slug,
+               source.display_name::text AS source_display_name,
+               company.company_id, company.canonical_name::text AS company_name,
+               company.company_type::text AS company_type,
                metric.active_posting_count, metric.new_posting_count,
                metric.closed_posting_count, metric.unique_occupation_count,
                metric.unique_skill_count, metric.salary_disclosed_count,
@@ -506,9 +557,13 @@ def _create_views() -> None:
     op.execute(
         """
         CREATE VIEW serving.v_location_demand_daily AS
-        SELECT metric.metric_date, source.source_id, source.slug AS source_slug,
-               location.location_id, location.canonical_label AS location_label,
-               metric.work_mode, metric.active_posting_count, metric.new_posting_count,
+        SELECT metric.metric_date, source.source_id, source.slug::text AS source_slug,
+               location.location_id, location.canonical_label::text AS location_label,
+               location.country_code::text AS country_code,
+               location.admin_level_1::text AS admin_level_1,
+               location.admin_level_2::text AS admin_level_2,
+               location.locality::text AS locality, metric.work_mode::text AS work_mode,
+               metric.active_posting_count, metric.new_posting_count,
                metric.closed_posting_count, metric.salary_disclosed_count,
                metric.calculation_version, metric.calculated_at
         FROM analytics.daily_location_demand AS metric
@@ -519,8 +574,10 @@ def _create_views() -> None:
     op.execute(
         """
         CREATE VIEW serving.v_occupation_demand_daily AS
-        SELECT metric.metric_date, source.source_id, source.slug AS source_slug,
-               occupation.occupation_id, occupation.canonical_name AS occupation_name,
+        SELECT metric.metric_date, source.source_id, source.slug::text AS source_slug,
+               occupation.occupation_id, occupation.canonical_name::text AS occupation_name,
+               occupation.canonical_code::text AS occupation_code,
+               occupation.taxonomy_version::text AS taxonomy_version,
                metric.active_posting_count, metric.new_posting_count,
                metric.closed_posting_count, metric.salary_disclosed_count,
                metric.remote_posting_count, metric.calculation_version, metric.calculated_at
@@ -533,8 +590,12 @@ def _create_views() -> None:
     op.execute(
         """
         CREATE VIEW serving.v_skill_demand_daily AS
-        SELECT metric.metric_date, source.source_id, source.slug AS source_slug,
-               skill.skill_id, skill.canonical_name AS skill_name, metric.requirement_type,
+        SELECT metric.metric_date, source.source_id, source.slug::text AS source_slug,
+               skill.skill_id, skill.canonical_name::text AS skill_name,
+               skill.canonical_code::text AS skill_code,
+               skill.skill_type::text AS skill_type,
+               skill.taxonomy_version::text AS taxonomy_version,
+               metric.requirement_type::text AS requirement_type,
                metric.active_posting_count, metric.new_posting_count,
                metric.closed_posting_count, metric.company_count, metric.occupation_count,
                metric.calculation_version, metric.calculated_at
@@ -546,10 +607,11 @@ def _create_views() -> None:
     op.execute(
         """
         CREATE VIEW serving.v_salary_metrics_daily AS
-        SELECT metric.metric_date, source.source_id, source.slug AS source_slug,
-               occupation.occupation_id, occupation.canonical_name AS occupation_name,
-               location.location_id, location.canonical_label AS location_label,
-               metric.currency, metric.period, metric.tax_basis,
+        SELECT metric.metric_date, source.source_id, source.slug::text AS source_slug,
+               occupation.occupation_id, occupation.canonical_name::text AS occupation_name,
+               location.location_id, location.canonical_label::text AS location_label,
+               metric.currency::text AS currency, metric.period::text AS period,
+               metric.tax_basis::text AS tax_basis,
                metric.disclosed_salary_count, metric.estimated_salary_count,
                metric.negotiable_salary_count, metric.amount_min_average,
                metric.amount_max_average, metric.amount_exact_average,
@@ -608,8 +670,19 @@ def _create_search_function() -> None:
         ) LANGUAGE plpgsql SECURITY DEFINER STABLE
         SET search_path = pg_catalog, api, serving AS $$
         BEGIN
-          IF p_limit NOT BETWEEN 1 AND 50 OR p_offset NOT BETWEEN 0 AND 1000
+          IF p_limit IS NULL OR p_offset IS NULL OR p_sort IS NULL
+             OR p_limit NOT BETWEEN 1 AND 50 OR p_offset NOT BETWEEN 0 AND 1000
              OR p_sort NOT IN ('relevance','newest','oldest')
+             OR (p_query IS NOT NULL AND char_length(p_query) > 500)
+             OR cardinality(p_source_ids) > 100 OR array_position(p_source_ids, NULL) IS NOT NULL
+             OR cardinality(p_company_ids) > 100 OR array_position(p_company_ids, NULL) IS NOT NULL
+             OR cardinality(p_location_ids) > 100 OR array_position(p_location_ids, NULL) IS NOT NULL
+             OR cardinality(p_occupation_ids) > 100 OR array_position(p_occupation_ids, NULL) IS NOT NULL
+             OR cardinality(p_skill_ids) > 100 OR array_position(p_skill_ids, NULL) IS NOT NULL
+             OR cardinality(p_employment_types) > 100 OR array_position(p_employment_types, NULL) IS NOT NULL
+             OR cardinality(p_seniority_levels) > 100 OR array_position(p_seniority_levels, NULL) IS NOT NULL
+             OR cardinality(p_work_modes) > 100 OR array_position(p_work_modes, NULL) IS NOT NULL
+             OR cardinality(p_statuses) > 100 OR array_position(p_statuses, NULL) IS NOT NULL
              OR p_salary_min < 0 OR p_salary_max < 0
              OR (p_salary_min IS NOT NULL AND p_salary_max IS NOT NULL
                  AND p_salary_min > p_salary_max)
@@ -669,9 +742,11 @@ def _create_search_function() -> None:
                  counted.occupation_names, counted.skill_names, counted.salary_disclosed,
                  counted.salaries, counted.score, counted.matched_count
           FROM counted
-          ORDER BY CASE WHEN p_sort='relevance' THEN counted.score END DESC,
+          ORDER BY CASE WHEN p_sort='relevance' AND btrim(COALESCE(p_query, '')) != ''
+                        THEN counted.score END DESC,
+                   CASE WHEN p_sort IN ('relevance','newest')
+                        THEN counted.posted_at END DESC NULLS LAST,
                    CASE WHEN p_sort='oldest' THEN counted.posted_at END ASC NULLS LAST,
-                   CASE WHEN p_sort='newest' THEN counted.posted_at END DESC NULLS LAST,
                    counted.job_posting_id
           LIMIT p_limit OFFSET p_offset;
         END; $$
@@ -756,8 +831,8 @@ def _create_dimension_dashboard_functions(common: str) -> None:
             "company_hiring_v1",
             "company",
             "company_ids",
-            "company_id UUID, company_name TEXT",
-            "company_id, company_name",
+            "source_display_name TEXT, company_id UUID, company_name TEXT, company_type TEXT",
+            "source_display_name, company_id, company_name, company_type",
             "",
             "active_posting_count, new_posting_count, closed_posting_count, unique_occupation_count, unique_skill_count, salary_disclosed_count, remote_posting_count",
         ),
@@ -765,26 +840,26 @@ def _create_dimension_dashboard_functions(common: str) -> None:
             "location_demand_v1",
             "location",
             "location_ids",
-            "location_id UUID, location_label TEXT, work_mode TEXT",
-            "location_id, location_label, work_mode",
-            "p_work_modes TEXT[] DEFAULT NULL, p_include_unknown BOOLEAN DEFAULT true, ",
+            "location_id UUID, location_label TEXT, country_code TEXT, admin_level_1 TEXT, admin_level_2 TEXT, locality TEXT, work_mode TEXT",
+            "location_id, location_label, country_code, admin_level_1, admin_level_2, locality, work_mode",
+            "p_work_modes TEXT[] DEFAULT NULL, p_include_unknown BOOLEAN DEFAULT false, ",
             "active_posting_count, new_posting_count, closed_posting_count, salary_disclosed_count",
         ),
         (
             "occupation_demand_v1",
             "occupation",
             "occupation_ids",
-            "occupation_id UUID, occupation_name TEXT",
-            "occupation_id, occupation_name",
-            "p_include_unknown BOOLEAN DEFAULT true, ",
+            "occupation_id UUID, occupation_name TEXT, occupation_code TEXT, taxonomy_version TEXT",
+            "occupation_id, occupation_name, occupation_code, taxonomy_version",
+            "p_include_unknown BOOLEAN DEFAULT false, ",
             "active_posting_count, new_posting_count, closed_posting_count, salary_disclosed_count, remote_posting_count",
         ),
         (
             "skill_demand_v1",
             "skill",
             "skill_ids",
-            "skill_id UUID, skill_name TEXT, requirement_type TEXT",
-            "skill_id, skill_name, requirement_type",
+            "skill_id UUID, skill_name TEXT, skill_code TEXT, skill_type TEXT, taxonomy_version TEXT, requirement_type TEXT",
+            "skill_id, skill_name, skill_code, skill_type, taxonomy_version, requirement_type",
             "p_requirement_types TEXT[] DEFAULT NULL, ",
             "active_posting_count, new_posting_count, closed_posting_count, company_count, occupation_count",
         ),
@@ -813,18 +888,19 @@ def _create_dimension_dashboard_functions(common: str) -> None:
               calculation_version TEXT, calculated_at TIMESTAMPTZ)
             LANGUAGE plpgsql SECURITY DEFINER STABLE
             SET search_path = pg_catalog, api, serving AS $$ BEGIN {common}
-              IF p_limit NOT BETWEEN 1 AND 1000 OR p_offset NOT BETWEEN 0 AND 5000 THEN
+              IF p_limit IS NULL OR p_offset IS NULL
+                 OR p_limit NOT BETWEEN 1 AND 1000 OR p_offset NOT BETWEEN 0 AND 5000 THEN
                 RAISE EXCEPTION 'invalid pagination' USING ERRCODE='22023'; END IF;
               RETURN QUERY SELECT view.metric_date, view.source_id, view.source_slug,
                 {", ".join("view." + item.strip() for item in dimensions.split(","))},
                 {", ".join("view." + item.strip() for item in metrics.split(","))},
-                view.calculation_version, view.calculated_at
+                view.calculation_version::text, view.calculated_at
               FROM serving.{view_name} AS view
               WHERE view.metric_date BETWEEN p_start_date AND p_end_date
                 AND (p_source_ids IS NULL OR view.source_id=ANY(p_source_ids))
                 AND (p_{ids_name} IS NULL OR view.{view_prefix}_id=ANY(p_{ids_name}))
                 {filters}
-              ORDER BY view.metric_date, view.{view_prefix}_id NULLS LAST
+              ORDER BY view.metric_date, view.source_id, view.{view_prefix}_id NULLS LAST
               LIMIT p_limit OFFSET p_offset; END; $$
             """
         )
@@ -835,14 +911,41 @@ def _create_dimension_dashboard_functions(common: str) -> None:
           p_source_ids UUID[] DEFAULT NULL, p_occupation_ids UUID[] DEFAULT NULL,
           p_location_ids UUID[] DEFAULT NULL, p_currency TEXT DEFAULT NULL,
           p_period TEXT DEFAULT NULL, p_tax_basis TEXT DEFAULT NULL,
-          p_include_unknown_dimensions BOOLEAN DEFAULT true,
+          p_include_unknown_dimensions BOOLEAN DEFAULT false,
           p_limit INTEGER DEFAULT 100, p_offset INTEGER DEFAULT 0)
-        RETURNS SETOF serving.v_salary_metrics_daily
+        RETURNS TABLE (
+          metric_date DATE, source_id UUID, source_slug TEXT,
+          occupation_id UUID, occupation_name TEXT, location_id UUID,
+          location_label TEXT, currency TEXT, period TEXT, tax_basis TEXT,
+          disclosed_salary_count BIGINT, estimated_salary_count BIGINT,
+          negotiable_salary_count BIGINT, amount_min_average NUMERIC,
+          amount_max_average NUMERIC, amount_exact_average NUMERIC,
+          normalized_monthly_min_average NUMERIC,
+          normalized_monthly_max_average NUMERIC,
+          normalized_annual_min_average NUMERIC,
+          normalized_annual_max_average NUMERIC,
+          normalized_monthly_min_median NUMERIC,
+          normalized_monthly_max_median NUMERIC,
+          normalized_annual_min_median NUMERIC,
+          normalized_annual_max_median NUMERIC,
+          calculation_version TEXT, calculated_at TIMESTAMPTZ)
         LANGUAGE plpgsql SECURITY DEFINER STABLE
         SET search_path = pg_catalog, api, serving AS $$ BEGIN {common}
-          IF p_limit NOT BETWEEN 1 AND 1000 OR p_offset NOT BETWEEN 0 AND 5000 THEN
+          IF p_limit IS NULL OR p_offset IS NULL
+             OR p_limit NOT BETWEEN 1 AND 1000 OR p_offset NOT BETWEEN 0 AND 5000 THEN
             RAISE EXCEPTION 'invalid pagination' USING ERRCODE='22023'; END IF;
-          RETURN QUERY SELECT view.* FROM serving.v_salary_metrics_daily AS view
+          RETURN QUERY SELECT view.metric_date, view.source_id, view.source_slug,
+            view.occupation_id, view.occupation_name, view.location_id,
+            view.location_label, view.currency, view.period, view.tax_basis,
+            view.disclosed_salary_count, view.estimated_salary_count,
+            view.negotiable_salary_count, view.amount_min_average,
+            view.amount_max_average, view.amount_exact_average,
+            view.normalized_monthly_min_average, view.normalized_monthly_max_average,
+            view.normalized_annual_min_average, view.normalized_annual_max_average,
+            view.normalized_monthly_min_median, view.normalized_monthly_max_median,
+            view.normalized_annual_min_median, view.normalized_annual_max_median,
+            view.calculation_version::text, view.calculated_at
+          FROM serving.v_salary_metrics_daily AS view
           WHERE view.metric_date BETWEEN p_start_date AND p_end_date
             AND (p_source_ids IS NULL OR view.source_id=ANY(p_source_ids))
             AND (p_occupation_ids IS NULL OR view.occupation_id=ANY(p_occupation_ids))
@@ -877,8 +980,10 @@ def _apply_grants() -> None:
     op.execute("GRANT USAGE ON SCHEMA serving TO service_role")
     op.execute("REVOKE ALL ON ALL TABLES IN SCHEMA serving FROM PUBLIC, anon, authenticated")
     op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA serving TO service_role"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON serving.refresh_runs, "
+        "serving.job_search_documents TO service_role"
     )
+    op.execute("GRANT SELECT ON serving.job_search_salary_offers TO service_role")
     op.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA serving TO service_role")
     for view_name in (
         "v_current_job_cards",
@@ -915,8 +1020,12 @@ def downgrade() -> None:
     op.execute(
         "DROP TRIGGER trg_job_search_salary_offers__validate ON serving.job_search_salary_offers"
     )
+    op.execute(
+        "DROP TRIGGER trg_job_search_documents__rebuild_salaries ON serving.job_search_documents"
+    )
     op.execute("DROP TRIGGER trg_job_search_documents__build ON serving.job_search_documents")
     op.execute("DROP FUNCTION serving.prevent_refresh_lineage_mutation()")
+    op.execute("DROP FUNCTION serving.rebuild_job_search_salary_offers()")
     op.execute("DROP FUNCTION serving.validate_search_salary_offer()")
     op.execute("DROP FUNCTION serving.build_job_search_document()")
     op.execute("DROP TABLE serving.job_search_salary_offers")

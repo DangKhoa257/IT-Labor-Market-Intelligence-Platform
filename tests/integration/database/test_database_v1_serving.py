@@ -11,7 +11,7 @@ from threading import Event
 import pytest
 import sqlalchemy as sa
 from alembic.config import Config
-from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
+from sqlalchemy.exc import DBAPIError, ProgrammingError
 
 from alembic import command
 
@@ -40,6 +40,174 @@ API_FUNCTIONS = {
     "occupation_demand_v1",
     "skill_demand_v1",
     "salary_metrics_v1",
+}
+API_OUTPUTS = {
+    "search_jobs_v1": (
+        "job_posting_id:uuid",
+        "observation_id:bigint",
+        "title:text",
+        "company_id:uuid",
+        "company_name:text",
+        "source_id:uuid",
+        "source_slug:text",
+        "source_display_name:text",
+        "source_url:text",
+        "canonical_url:text",
+        "status:text",
+        "posted_at:timestamp with time zone",
+        "expires_at:timestamp with time zone",
+        "first_seen_at:timestamp with time zone",
+        "last_seen_at:timestamp with time zone",
+        "employment_type_code:text",
+        "seniority_level_code:text",
+        "work_mode:text",
+        "location_labels:text[]",
+        "occupation_names:text[]",
+        "skill_names:text[]",
+        "salary_disclosed:boolean",
+        "salary_offers_json:jsonb",
+        "rank_score:real",
+        "total_count:bigint",
+    ),
+    "get_job_v1": (
+        "job_posting_id:uuid",
+        "observation_id:bigint",
+        "source_id:uuid",
+        "source_slug:text",
+        "source_display_name:text",
+        "source_job_id:text",
+        "company_id:uuid",
+        "source_url:text",
+        "canonical_url:text",
+        "title:text",
+        "title_normalized:text",
+        "company_name:text",
+        "description_excerpt:text",
+        "employment_type_code:text",
+        "seniority_level_code:text",
+        "work_mode:text",
+        "status:text",
+        "posted_at:timestamp with time zone",
+        "expires_at:timestamp with time zone",
+        "first_seen_at:timestamp with time zone",
+        "last_seen_at:timestamp with time zone",
+        "locations_json:jsonb",
+        "occupations_json:jsonb",
+        "skills_json:jsonb",
+        "salary_offers_json:jsonb",
+        "document_version:text",
+        "updated_at:timestamp with time zone",
+    ),
+    "market_overview_v1": (
+        "metric_date:date",
+        "active_posting_count:bigint",
+        "new_posting_count:bigint",
+        "closed_posting_count:bigint",
+        "expired_posting_count:bigint",
+        "removed_posting_count:bigint",
+        "reactivated_posting_count:bigint",
+        "content_changed_count:bigint",
+        "salary_disclosed_count:bigint",
+        "remote_posting_count:bigint",
+    ),
+    "company_hiring_v1": (
+        "metric_date:date",
+        "source_id:uuid",
+        "source_slug:text",
+        "source_display_name:text",
+        "company_id:uuid",
+        "company_name:text",
+        "company_type:text",
+        "active_posting_count:bigint",
+        "new_posting_count:bigint",
+        "closed_posting_count:bigint",
+        "unique_occupation_count:bigint",
+        "unique_skill_count:bigint",
+        "salary_disclosed_count:bigint",
+        "remote_posting_count:bigint",
+        "calculation_version:text",
+        "calculated_at:timestamp with time zone",
+    ),
+    "location_demand_v1": (
+        "metric_date:date",
+        "source_id:uuid",
+        "source_slug:text",
+        "location_id:uuid",
+        "location_label:text",
+        "country_code:text",
+        "admin_level_1:text",
+        "admin_level_2:text",
+        "locality:text",
+        "work_mode:text",
+        "active_posting_count:bigint",
+        "new_posting_count:bigint",
+        "closed_posting_count:bigint",
+        "salary_disclosed_count:bigint",
+        "calculation_version:text",
+        "calculated_at:timestamp with time zone",
+    ),
+    "occupation_demand_v1": (
+        "metric_date:date",
+        "source_id:uuid",
+        "source_slug:text",
+        "occupation_id:uuid",
+        "occupation_name:text",
+        "occupation_code:text",
+        "taxonomy_version:text",
+        "active_posting_count:bigint",
+        "new_posting_count:bigint",
+        "closed_posting_count:bigint",
+        "salary_disclosed_count:bigint",
+        "remote_posting_count:bigint",
+        "calculation_version:text",
+        "calculated_at:timestamp with time zone",
+    ),
+    "skill_demand_v1": (
+        "metric_date:date",
+        "source_id:uuid",
+        "source_slug:text",
+        "skill_id:uuid",
+        "skill_name:text",
+        "skill_code:text",
+        "skill_type:text",
+        "taxonomy_version:text",
+        "requirement_type:text",
+        "active_posting_count:bigint",
+        "new_posting_count:bigint",
+        "closed_posting_count:bigint",
+        "company_count:bigint",
+        "occupation_count:bigint",
+        "calculation_version:text",
+        "calculated_at:timestamp with time zone",
+    ),
+    "salary_metrics_v1": (
+        "metric_date:date",
+        "source_id:uuid",
+        "source_slug:text",
+        "occupation_id:uuid",
+        "occupation_name:text",
+        "location_id:uuid",
+        "location_label:text",
+        "currency:text",
+        "period:text",
+        "tax_basis:text",
+        "disclosed_salary_count:bigint",
+        "estimated_salary_count:bigint",
+        "negotiable_salary_count:bigint",
+        "amount_min_average:numeric",
+        "amount_max_average:numeric",
+        "amount_exact_average:numeric",
+        "normalized_monthly_min_average:numeric",
+        "normalized_monthly_max_average:numeric",
+        "normalized_annual_min_average:numeric",
+        "normalized_annual_max_average:numeric",
+        "normalized_monthly_min_median:numeric",
+        "normalized_monthly_max_median:numeric",
+        "normalized_annual_min_median:numeric",
+        "normalized_annual_max_median:numeric",
+        "calculation_version:text",
+        "calculated_at:timestamp with time zone",
+    ),
 }
 
 
@@ -267,18 +435,6 @@ def catalog(engine: sa.Engine) -> dict[str, object]:
             ),
             {"job": job, "observation": observation, "run": serving_run},
         )
-        connection.execute(
-            sa.text(
-                """INSERT INTO serving.job_search_salary_offers
-                       (job_posting_id, observation_salary_id, currency, period, tax_basis,
-                        compensation_type, is_disclosed, is_negotiable, is_estimated,
-                        amount_min, amount_max, normalized_monthly_min,
-                        normalized_monthly_max, refresh_run_id)
-                   VALUES (:job, :salary, 'USD', 'month', 'gross', 'base_salary', true,
-                           false, false, 2000, 3000, 2000, 3000, :run)"""
-            ),
-            {"job": job, "salary": salary, "run": serving_run},
-        )
     return locals()
 
 
@@ -328,6 +484,22 @@ def test_inventory_head_indexes_and_rls(engine: sa.Engine) -> None:
             "ix_job_search_documents__location_ids",
             "ix_search_salary_offers__range",
         } <= indexes
+        triggers = set(
+            connection.scalars(
+                sa.text(
+                    """SELECT tgname FROM pg_trigger
+                       WHERE tgrelid IN (
+                         'serving.job_search_documents'::regclass,
+                         'serving.job_search_salary_offers'::regclass)
+                         AND NOT tgisinternal"""
+                )
+            )
+        )
+        assert {
+            "trg_job_search_documents__build",
+            "trg_job_search_documents__rebuild_salaries",
+            "trg_job_search_salary_offers__validate",
+        } <= triggers
 
 
 def test_builder_search_detail_and_filters(engine: sa.Engine, catalog: dict[str, object]) -> None:
@@ -389,10 +561,91 @@ def test_builder_search_detail_and_filters(engine: sa.Engine, catalog: dict[str,
         assert "canonical_hash" not in detail
     for sql in (
         "SELECT * FROM api.search_jobs_v1(p_limit=>0)",
+        "SELECT * FROM api.search_jobs_v1(p_limit=>NULL)",
+        "SELECT * FROM api.search_jobs_v1(p_offset=>NULL)",
+        "SELECT * FROM api.search_jobs_v1(p_sort=>NULL)",
         "SELECT * FROM api.search_jobs_v1(p_sort=>'invalid')",
         "SELECT * FROM api.search_jobs_v1(p_salary_min=>1)",
+        "SELECT * FROM api.search_jobs_v1(p_source_ids=>ARRAY[NULL]::uuid[])",
+        "SELECT * FROM api.search_jobs_v1(p_statuses=>ARRAY['active',NULL]::text[])",
+        """SELECT * FROM api.search_jobs_v1(
+               p_source_ids=>ARRAY(SELECT gen_random_uuid() FROM generate_series(1,101)))""",
     ):
         assert getattr(_reject(engine, sql, {}).orig, "sqlstate", None) == "22023"
+    assert (
+        getattr(
+            _reject(
+                engine,
+                "SELECT * FROM api.search_jobs_v1(p_query=>:query)",
+                {"query": "x" * 501},
+            ).orig,
+            "sqlstate",
+            None,
+        )
+        == "22023"
+    )
+    for function_name in (
+        "company_hiring_v1",
+        "location_demand_v1",
+        "occupation_demand_v1",
+        "skill_demand_v1",
+        "salary_metrics_v1",
+    ):
+        for parameter in ("p_limit", "p_offset"):
+            error = _reject(
+                engine,
+                f"SELECT * FROM api.{function_name}({parameter}=>NULL)",
+                {},
+            )
+            assert getattr(error.orig, "sqlstate", None) == "22023"
+
+
+def test_api_output_contracts_are_explicit(engine: sa.Engine) -> None:
+    with engine.connect() as connection:
+        rows = connection.execute(
+            sa.text(
+                """SELECT p.proname, argument.arg_name,
+                          pg_catalog.format_type(argument.arg_type, NULL) AS arg_type
+                   FROM pg_proc AS p
+                   JOIN pg_namespace AS namespace ON namespace.oid = p.pronamespace
+                   CROSS JOIN LATERAL unnest(
+                       p.proallargtypes, p.proargmodes, p.proargnames
+                   ) WITH ORDINALITY AS argument(arg_type, arg_mode, arg_name, ordinality)
+                   WHERE namespace.nspname = 'api' AND argument.arg_mode IN ('o', 't')
+                   ORDER BY p.proname, argument.ordinality"""
+            )
+        ).all()
+        actual: dict[str, list[str]] = {name: [] for name in API_FUNCTIONS}
+        for function_name, column_name, column_type in rows:
+            actual[function_name].append(f"{column_name}:{column_type}")
+        assert {name: tuple(columns) for name, columns in actual.items()} == API_OUTPUTS
+
+        private_composite_count = connection.scalar(
+            sa.text(
+                """SELECT count(*)
+                   FROM pg_proc AS function
+                   JOIN pg_namespace AS function_schema
+                     ON function_schema.oid = function.pronamespace
+                   JOIN pg_type AS return_type ON return_type.oid = function.prorettype
+                   JOIN pg_class AS relation ON relation.oid = return_type.typrelid
+                   JOIN pg_namespace AS relation_schema
+                     ON relation_schema.oid = relation.relnamespace
+                   WHERE function_schema.nspname='api'
+                     AND relation_schema.nspname='serving'"""
+            )
+        )
+        assert private_composite_count == 0
+        defaults = dict(
+            connection.execute(
+                sa.text(
+                    """SELECT p.proname, pg_get_function_arguments(p.oid)
+                       FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+                       WHERE n.nspname='api' AND p.proname IN
+                         ('location_demand_v1','occupation_demand_v1','salary_metrics_v1')"""
+                )
+            ).all()
+        )
+        assert all("boolean DEFAULT false" in arguments for arguments in defaults.values())
 
 
 def test_stale_hiding_and_concurrent_current_update(
@@ -486,20 +739,272 @@ def test_stale_hiding_and_concurrent_current_update(
         )
 
 
-def test_salary_lineage_and_cache_delete_preserves_history(
+def test_search_relevance_and_blank_query_ordering(
     engine: sa.Engine, catalog: dict[str, object]
 ) -> None:
-    error = _reject(
-        engine,
-        """INSERT INTO serving.job_search_salary_offers
-               (job_posting_id, observation_salary_id, currency, period, tax_basis,
-                compensation_type, is_disclosed, is_negotiable, is_estimated,
-                amount_min, amount_max, refresh_run_id)
-           VALUES (:job, :salary, 'USD', 'month', 'gross', 'base_salary', true,
-                   false, false, 1, 2, :run)""",
-        {"job": catalog["job"], "salary": catalog["salary"], "run": catalog["serving_run"]},
-    )
-    assert isinstance(error, IntegrityError)
+    jobs: list[object] = []
+    with engine.begin() as connection:
+        for index, posted_at in enumerate(("2026-02-03T00:00:00Z", "2026-02-04T00:00:00Z")):
+            source_job_id = f"serving-tie-{index}"
+            record = _one(
+                connection,
+                """INSERT INTO ingestion.extracted_records
+                       (extraction_run_id, source_id, source_job_id, fetch_event_id,
+                        record_schema_version, direct_payload_json, direct_hash, extracted_at)
+                   VALUES (:extraction, :source, :source_job_id, :fetch, 'direct.v1',
+                           '{}'::jsonb, :hash, :posted_at) RETURNING id""",
+                {
+                    "extraction": catalog["extraction"],
+                    "source": catalog["source"],
+                    "source_job_id": source_job_id,
+                    "fetch": catalog["fetch"],
+                    "hash": str(index + 7) * 64,
+                    "posted_at": posted_at,
+                },
+            )
+            job = _one(
+                connection,
+                """INSERT INTO core.job_postings
+                       (source_id, source_job_id, source_url, title_raw,
+                        first_seen_at, last_seen_at, last_changed_at)
+                   VALUES (:source, :source_job_id, :url,
+                           'EXAMPLE_NOT_REAL_DATA Tie Engineer', :posted_at,
+                           :posted_at, :posted_at) RETURNING id""",
+                {
+                    "source": catalog["source"],
+                    "source_job_id": source_job_id,
+                    "url": f"https://example.test/jobs/{source_job_id}",
+                    "posted_at": posted_at,
+                },
+            )
+            observation = _one(
+                connection,
+                """INSERT INTO history.job_observations
+                       (job_posting_id, source_id, source_job_id, extracted_record_id,
+                        crawl_run_id, observation_reason, observed_at, canonical_hash,
+                        status, source_url, title_raw, title_normalized, posted_at,
+                        canonical_payload_json, normalization_version)
+                   VALUES (:job, :source, :source_job_id, :record, :crawl, 'first_seen',
+                           :posted_at, :hash, 'active', :url,
+                           'EXAMPLE_NOT_REAL_DATA Tie Engineer', 'tie engineer', :posted_at,
+                           '{}'::jsonb, 'serving.v1') RETURNING id""",
+                {
+                    "job": job,
+                    "source": catalog["source"],
+                    "source_job_id": source_job_id,
+                    "record": record,
+                    "crawl": catalog["crawl"],
+                    "posted_at": posted_at,
+                    "hash": str(index + 4) * 64,
+                    "url": f"https://example.test/jobs/{source_job_id}",
+                },
+            )
+            connection.execute(
+                sa.text(
+                    "UPDATE core.job_postings SET current_observation_id=:observation WHERE id=:job"
+                ),
+                {"observation": observation, "job": job},
+            )
+            connection.execute(
+                sa.text(
+                    """INSERT INTO serving.job_search_documents
+                           (job_posting_id, observation_id, refresh_run_id, document_version)
+                       VALUES (:job, :observation, :run, 'serving-test.v1')"""
+                ),
+                {"job": job, "observation": observation, "run": catalog["serving_run"]},
+            )
+            jobs.append(job)
+
+    with engine.connect() as connection:
+        relevance = list(
+            connection.scalars(
+                sa.text(
+                    """SELECT job_posting_id FROM api.search_jobs_v1(
+                           p_query=>'Tie Engineer', p_sort=>'relevance')"""
+                )
+            )
+        )
+        assert relevance == [jobs[1], jobs[0]]
+        blank = list(
+            connection.scalars(
+                sa.text(
+                    """SELECT job_posting_id FROM api.search_jobs_v1(
+                           p_query=>'   ', p_sort=>'relevance', p_limit=>2)"""
+                )
+            )
+        )
+        assert blank == [jobs[1], jobs[0]]
+
+
+def test_salary_projection_is_atomic_and_history_is_unchanged(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    with engine.begin() as connection:
+        observation_b = _one(
+            connection,
+            """INSERT INTO history.job_observations
+                   (job_posting_id, source_id, source_job_id, extracted_record_id,
+                    crawl_run_id, previous_observation_id, observation_reason, observed_at,
+                    canonical_hash, status, source_url, title_raw, title_normalized,
+                    company_id, company_name_raw, employment_type_code,
+                    seniority_level_code, work_mode, posted_at, canonical_payload_json,
+                    normalization_version)
+               VALUES (:job, :source, 'serving-job', :record, :crawl, :previous,
+                       'content_changed', '2026-02-05T08:00:00Z', :hash, 'active',
+                       'https://example.test/jobs/serving',
+                       'EXAMPLE_NOT_REAL_DATA Python Platform Engineer II',
+                       'python platform engineer ii', :company, 'Example Cloud',
+                       'full_time', 'senior', 'hybrid', '2026-01-31T00:00:00Z',
+                       '{}'::jsonb, 'serving.v2') RETURNING id""",
+            {
+                "job": catalog["job"],
+                "source": catalog["source"],
+                "record": catalog["record"],
+                "crawl": catalog["crawl"],
+                "previous": catalog["observation"],
+                "hash": "e" * 64,
+                "company": catalog["company"],
+            },
+        )
+        salary_b1 = _one(
+            connection,
+            """INSERT INTO history.observation_salaries
+                   (observation_id, amount_min, amount_max, currency, period, tax_basis,
+                    is_disclosed, normalized_monthly_min, normalized_monthly_max)
+               VALUES (:observation, 4000, 5000, 'USD', 'month', 'gross', true,
+                       4000, 5000) RETURNING id""",
+            {"observation": observation_b},
+        )
+        salary_b2 = _one(
+            connection,
+            """INSERT INTO history.observation_salaries
+                   (observation_id, amount_exact, currency, period, tax_basis,
+                    compensation_type, is_disclosed)
+               VALUES (:observation, 800, 'USD', 'month', 'gross', 'bonus', true)
+               RETURNING id""",
+            {"observation": observation_b},
+        )
+        run_b = _one(
+            connection,
+            """INSERT INTO serving.refresh_runs
+                   (run_type, status, document_version, source_id, started_at, finished_at)
+               VALUES ('test', 'succeeded', 'serving-test.v1', :source, now(), now())
+               RETURNING id""",
+            {"source": catalog["source"]},
+        )
+        connection.execute(
+            sa.text(
+                "UPDATE core.job_postings SET current_observation_id=:observation WHERE id=:job"
+            ),
+            {"observation": observation_b, "job": catalog["job"]},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE serving.job_search_documents
+                   SET observation_id=:observation, refresh_run_id=:run
+                   WHERE job_posting_id=:job"""
+            ),
+            {"observation": observation_b, "run": run_b, "job": catalog["job"]},
+        )
+
+    with engine.connect() as connection:
+        salary_rows = connection.execute(
+            sa.text(
+                """SELECT observation_salary_id, refresh_run_id
+                   FROM serving.job_search_salary_offers
+                   WHERE job_posting_id=:job ORDER BY observation_salary_id"""
+            ),
+            {"job": catalog["job"]},
+        ).all()
+        assert salary_rows == [(salary_b1, run_b), (salary_b2, run_b)]
+        assert (
+            connection.scalar(
+                sa.text("SELECT count(*) FROM history.observation_salaries WHERE id=:salary"),
+                {"salary": catalog["salary"]},
+            )
+            == 1
+        )
+
+    with engine.begin() as connection:
+        lineage_run = _one(
+            connection,
+            """INSERT INTO serving.refresh_runs
+                   (run_type, status, document_version, source_id, started_at, finished_at)
+               VALUES ('test', 'succeeded', 'serving-test.v1', :source, now(), now())
+               RETURNING id""",
+            {"source": catalog["source"]},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE serving.job_search_documents SET refresh_run_id=:run
+                   WHERE job_posting_id=:job"""
+            ),
+            {"run": lineage_run, "job": catalog["job"]},
+        )
+    with engine.connect() as connection:
+        assert (
+            set(
+                connection.scalars(
+                    sa.text(
+                        """SELECT refresh_run_id FROM serving.job_search_salary_offers
+                       WHERE job_posting_id=:job"""
+                    ),
+                    {"job": catalog["job"]},
+                )
+            )
+            == {lineage_run}
+        )
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE core.job_postings SET current_observation_id=:observation WHERE id=:job"
+            ),
+            {"observation": catalog["observation"], "job": catalog["job"]},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE serving.job_search_documents
+                   SET observation_id=:observation, refresh_run_id=:run,
+                       document_version='serving-test.v1'
+                   WHERE job_posting_id=:job"""
+            ),
+            {
+                "observation": catalog["observation"],
+                "run": catalog["serving_run"],
+                "job": catalog["job"],
+            },
+        )
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    """SELECT observation_salary_id FROM serving.job_search_salary_offers
+                   WHERE job_posting_id=:job"""
+                ),
+                {"job": catalog["job"]},
+            )
+            == catalog["salary"]
+        )
+
+    for statement in ("INSERT", "UPDATE", "DELETE"):
+        connection = engine.connect()
+        transaction = connection.begin()
+        try:
+            connection.execute(sa.text("SET ROLE service_role"))
+            if statement == "INSERT":
+                sql = "INSERT INTO serving.job_search_salary_offers DEFAULT VALUES"
+            elif statement == "UPDATE":
+                sql = "UPDATE serving.job_search_salary_offers SET updated_at=now()"
+            else:
+                sql = "DELETE FROM serving.job_search_salary_offers"
+            with pytest.raises(ProgrammingError) as error:
+                connection.execute(sa.text(sql))
+            assert getattr(error.value.orig, "sqlstate", None) == "42501"
+        finally:
+            transaction.rollback()
+            connection.close()
+
     connection = engine.connect()
     transaction = connection.begin()
     try:
@@ -517,6 +1022,130 @@ def test_salary_lineage_and_cache_delete_preserves_history(
     finally:
         transaction.rollback()
         connection.close()
+
+
+def test_refresh_run_lineage_is_concurrency_safe(
+    engine: sa.Engine, catalog: dict[str, object]
+) -> None:
+    document_connection = engine.connect()
+    document_transaction = document_connection.begin()
+    try:
+        document_connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+        document_connection.execute(
+            sa.text(
+                """UPDATE serving.job_search_documents SET observation_id=observation_id
+                   WHERE job_posting_id=:job"""
+            ),
+            {"job": catalog["job"]},
+        )
+        started = Event()
+
+        def mutate_referenced_run() -> str | None:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+                    connection.execute(sa.text("SET LOCAL statement_timeout='10s'"))
+                    started.set()
+                    connection.execute(
+                        sa.text(
+                            """UPDATE serving.refresh_runs
+                               SET document_version='forbidden.v2' WHERE id=:run"""
+                        ),
+                        {"run": catalog["serving_run"]},
+                    )
+            except DBAPIError as error:
+                sqlstate = getattr(error.orig, "sqlstate", None)
+                return sqlstate if isinstance(sqlstate, str) else None
+            return None
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(mutate_referenced_run)
+            assert started.wait(2)
+            time.sleep(0.2)
+            assert not future.done()
+            document_transaction.commit()
+            assert future.result(timeout=10) == "23514"
+    finally:
+        if document_transaction.is_active:
+            document_transaction.rollback()
+        document_connection.close()
+
+    with engine.begin() as connection:
+        pending_run = _one(
+            connection,
+            """INSERT INTO serving.refresh_runs
+                   (run_type, status, document_version, source_id, started_at, finished_at)
+               VALUES ('test', 'succeeded', 'before.v1', :source, now(), now()) RETURNING id""",
+            {"source": catalog["source"]},
+        )
+
+    refresh_connection = engine.connect()
+    refresh_transaction = refresh_connection.begin()
+    try:
+        refresh_connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+        refresh_connection.execute(
+            sa.text("UPDATE serving.refresh_runs SET document_version='after.v2' WHERE id=:run"),
+            {"run": pending_run},
+        )
+        started = Event()
+
+        def attach_final_run() -> None:
+            with engine.begin() as connection:
+                connection.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+                connection.execute(sa.text("SET LOCAL statement_timeout='10s'"))
+                started.set()
+                connection.execute(
+                    sa.text(
+                        """UPDATE serving.job_search_documents
+                           SET refresh_run_id=:run, document_version='after.v2'
+                           WHERE job_posting_id=:job"""
+                    ),
+                    {"run": pending_run, "job": catalog["job"]},
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(attach_final_run)
+            assert started.wait(2)
+            time.sleep(0.2)
+            assert not future.done()
+            refresh_transaction.commit()
+            future.result(timeout=10)
+    finally:
+        if refresh_transaction.is_active:
+            refresh_transaction.rollback()
+        refresh_connection.close()
+
+    with engine.begin() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    """SELECT refresh_run_id FROM serving.job_search_documents
+                       WHERE job_posting_id=:job"""
+                ),
+                {"job": catalog["job"]},
+            )
+            == pending_run
+        )
+        assert (
+            set(
+                connection.scalars(
+                    sa.text(
+                        """SELECT refresh_run_id FROM serving.job_search_salary_offers
+                       WHERE job_posting_id=:job"""
+                    ),
+                    {"job": catalog["job"]},
+                )
+            )
+            == {pending_run}
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE serving.job_search_documents
+                   SET refresh_run_id=:run, document_version='serving-test.v1'
+                   WHERE job_posting_id=:job"""
+            ),
+            {"run": catalog["serving_run"], "job": catalog["job"]},
+        )
 
 
 def test_dashboard_functions_and_validation(engine: sa.Engine, catalog: dict[str, object]) -> None:
@@ -578,30 +1207,78 @@ def test_security_grants_functions_and_roles(engine: sa.Engine, catalog: dict[st
     with engine.connect() as connection:
         properties = connection.execute(
             sa.text(
-                """SELECT p.proname, p.prosecdef, p.provolatile,
-                          p.proconfig::text
+                """SELECT p.proname, p.prosecdef, p.provolatile, p.proconfig,
+                          EXISTS (
+                            SELECT 1
+                            FROM aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) AS acl
+                            WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'
+                          ) AS public_execute,
+                          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+                          has_function_privilege('authenticated', p.oid, 'EXECUTE')
+                            AS authenticated_execute,
+                          p.prosrc !~* '\\mEXECUTE\\M' AS has_no_dynamic_sql
                    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                    WHERE n.nspname='api'"""
             )
         ).all()
         assert len(properties) == 8
         assert all(row.prosecdef and row.provolatile == "s" for row in properties)
-        assert all("pg_catalog, api, serving" in row.proconfig for row in properties)
+        assert all(row.proconfig == ["search_path=pg_catalog, api, serving"] for row in properties)
+        assert all(not row.public_execute for row in properties)
+        assert all(row.anon_execute and row.authenticated_execute for row in properties)
+        assert all(row.has_no_dynamic_sql for row in properties)
         for role in ("anon", "authenticated"):
-            connection.execute(sa.text(f"SET ROLE {role}"))
+            assert not connection.scalar(
+                sa.text("SELECT has_schema_privilege(:role, 'serving', 'USAGE')"),
+                {"role": role},
+            )
             assert (
                 connection.scalar(
+                    sa.text(
+                        """SELECT count(*) FROM pg_class AS relation
+                       JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace
+                       WHERE namespace.nspname='serving'
+                         AND relation.relkind IN ('r','v')
+                         AND (has_table_privilege(:role, relation.oid, 'SELECT')
+                           OR has_table_privilege(:role, relation.oid, 'INSERT')
+                           OR has_table_privilege(:role, relation.oid, 'UPDATE')
+                           OR has_table_privilege(:role, relation.oid, 'DELETE'))"""
+                    ),
+                    {"role": role},
+                )
+                == 0
+            )
+        assert not connection.scalar(
+            sa.text(
+                """SELECT has_table_privilege(
+                       'service_role', 'serving.job_search_salary_offers',
+                       'INSERT,UPDATE,DELETE')"""
+            )
+        )
+
+    for role in ("anon", "authenticated"):
+        role_connection = engine.connect()
+        transaction = role_connection.begin()
+        try:
+            role_connection.execute(sa.text(f"SET ROLE {role}"))
+            assert (
+                role_connection.scalar(
                     sa.text("SELECT count(*) FROM api.search_jobs_v1(p_query=>'Python')")
                 )
                 == 1
             )
             with pytest.raises(ProgrammingError):
-                connection.execute(sa.text("SELECT * FROM serving.job_search_documents"))
-            connection.rollback()
-            connection.execute(sa.text("RESET ROLE"))
-        connection.execute(sa.text("SET ROLE service_role"))
+                role_connection.execute(sa.text("SELECT * FROM serving.job_search_documents"))
+        finally:
+            transaction.rollback()
+            role_connection.close()
+
+    service_connection = engine.connect()
+    service_transaction = service_connection.begin()
+    try:
+        service_connection.execute(sa.text("SET ROLE service_role"))
         assert (
-            connection.scalar(
+            service_connection.scalar(
                 sa.text(
                     "SELECT count(*) FROM serving.job_search_documents WHERE job_posting_id=:job"
                 ),
@@ -609,7 +1286,9 @@ def test_security_grants_functions_and_roles(engine: sa.Engine, catalog: dict[st
             )
             == 1
         )
-        connection.execute(sa.text("RESET ROLE"))
+    finally:
+        service_transaction.rollback()
+        service_connection.close()
 
 
 def test_zz_downgrade_and_reupgrade(engine: sa.Engine) -> None:

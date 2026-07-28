@@ -112,6 +112,9 @@
   `SECURITY DEFINER` functions in the function-only `api` schema.
 - Stale documents are hidden whenever their observation does not equal the posting's current
   observation. `anon` and `authenticated` have no direct serving relation privileges.
+- Salary projections are atomically rebuilt from the selected observation by PostgreSQL. Public
+  RPC validation is NULL-safe, ordering is deterministic, and dashboard returns use explicit
+  descriptive columns rather than private relation row types.
 
 ### JobPosting
 

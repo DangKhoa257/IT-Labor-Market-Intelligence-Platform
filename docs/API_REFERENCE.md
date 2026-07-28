@@ -31,3 +31,9 @@ Migration 006 separately exposes eight PostgreSQL RPC functions in `api`: `searc
 only. `anon` and `authenticated` can execute exactly those functions but cannot read private
 `serving` tables or views directly. Search and detail RPCs hide serving documents whose
 observation no longer matches the canonical current-observation pointer.
+
+Search rejects NULL pagination/sort values, queries longer than 500 characters, NULL-bearing or
+oversized filter arrays, and invalid salary bounds. Relevance and date sorts have stable posted-time
+and posting-ID tie breakers. Dashboard RPCs expose explicit descriptive columns; location,
+occupation, and salary unknown-dimension flags default to false. Serving salary rows are generated
+atomically from the selected immutable observation rather than accepted as loader-provided copies.
