@@ -868,23 +868,23 @@ def _create_trigger_functions_and_triggers() -> None:
                     RAISE EXCEPTION 'finalized health evidence is immutable'
                         USING ERRCODE='23514';
                 END IF;
-            ELSIF TG_TABLE_NAME = 'archive_manifests'
-               AND OLD.status='verified' THEN
-                RAISE EXCEPTION 'verified archive manifest is immutable'
-                    USING ERRCODE='23514';
-            ELSIF TG_TABLE_NAME = 'backup_snapshots'
-               AND OLD.verification_status='verified'
-               AND NOT (TG_OP='UPDATE' AND OLD.status='succeeded'
-                        AND NEW.status IN ('expired','deleted')
-                        AND NEW.id=OLD.id AND NEW.provider=OLD.provider
-                        AND NEW.provider_snapshot_id=OLD.provider_snapshot_id
-                        AND NEW.checksum_sha256=OLD.checksum_sha256) THEN
-                RAISE EXCEPTION 'verified backup evidence is immutable'
-                    USING ERRCODE='23514';
-            ELSIF TG_TABLE_NAME IN ('restore_drills','health_check_runs')
-               AND OLD.status IN ('succeeded','failed','cancelled','passed','passed_with_warnings')
-               THEN RAISE EXCEPTION 'terminal operational evidence is immutable'
-                    USING ERRCODE='23514';
+            ELSIF TG_TABLE_NAME = 'archive_manifests' THEN
+                IF OLD.status='verified' THEN
+                    RAISE EXCEPTION 'verified archive manifest is immutable' USING ERRCODE='23514';
+                END IF;
+            ELSIF TG_TABLE_NAME = 'backup_snapshots' THEN
+                IF OLD.verification_status='verified'
+                   AND NOT (TG_OP='UPDATE' AND OLD.status='succeeded'
+                            AND NEW.status IN ('expired','deleted')
+                            AND NEW.id=OLD.id AND NEW.provider=OLD.provider
+                            AND NEW.provider_snapshot_id=OLD.provider_snapshot_id
+                            AND NEW.checksum_sha256=OLD.checksum_sha256) THEN
+                    RAISE EXCEPTION 'verified backup evidence is immutable' USING ERRCODE='23514';
+                END IF;
+            ELSIF TG_TABLE_NAME IN ('restore_drills','health_check_runs') THEN
+                IF OLD.status IN ('succeeded','failed','cancelled','passed','passed_with_warnings') THEN
+                    RAISE EXCEPTION 'terminal operational evidence is immutable' USING ERRCODE='23514';
+                END IF;
             END IF;
             IF TG_OP='DELETE' THEN RETURN OLD; END IF;
             RETURN NEW;
