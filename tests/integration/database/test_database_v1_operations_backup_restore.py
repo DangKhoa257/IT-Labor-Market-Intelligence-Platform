@@ -177,9 +177,9 @@ def test_backup_rejects_invalid_lifecycle_transitions(
             sa.text(
                 f"""INSERT INTO operations.backup_snapshots
                 (environment_name,provider,provider_snapshot_id,backup_type,status,
-                 postgres_version,alembic_revision,database_identifier{initial_times})
+                 postgres_version,alembic_revision,database_identifier,encrypted{initial_times})
                 VALUES ('test','provider',:suffix,'logical',:status,'16','007','database'
-                        {values[initial_times]}) RETURNING id"""
+                        ,false{values[initial_times]}) RETURNING id"""
             ),
             {"suffix": suffix, "status": initial_status},
         )
