@@ -210,7 +210,8 @@ def test_four_partial_indexes_have_exact_predicates(engine: sa.Engine) -> None:
     def normalize_predicate(predicate: str) -> str:
         normalized = predicate.lower().replace("::character varying", "").replace("::text", "")
         normalized = re.sub(r"=\s*any\s*\(array\[(.*?)\]\[\]\)", r"in(\1)", normalized)
-        return re.sub(r"[\s()\"]", "", normalized)
+        normalized = re.sub(r"[\s()\"]", "", normalized)
+        return re.sub(r"=anyarray\[(.*?)\]\[\]", r"in(\1)", normalized)
 
     normalized = {name: normalize_predicate(predicate) for name, predicate in rows.items()}
     assert normalized == {
