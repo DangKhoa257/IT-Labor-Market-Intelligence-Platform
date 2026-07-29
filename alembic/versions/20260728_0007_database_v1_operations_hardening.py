@@ -321,8 +321,11 @@ def _create_backup_restore_tables() -> None:
                   AND verified_by IS NOT NULL AND length(trim(verified_by)) > 0
                   AND verified_at IS NOT NULL)),
             CONSTRAINT ck_backup_snapshots__timestamps CHECK
-                (finished_at IS NULL OR
-                 (started_at IS NOT NULL AND finished_at >= started_at)),
+                ((status='requested' AND started_at IS NULL AND finished_at IS NULL)
+                 OR (status='running' AND started_at IS NOT NULL AND finished_at IS NULL)
+                 OR (status IN ('succeeded','failed','expired','deleted')
+                     AND started_at IS NOT NULL AND finished_at IS NOT NULL
+                     AND finished_at >= started_at)),
             CONSTRAINT ck_backup_snapshots__retention CHECK
                 (retention_until IS NULL OR recovery_point_at IS NULL
                  OR retention_until > recovery_point_at)
@@ -839,8 +842,8 @@ def _create_trigger_functions_and_triggers() -> None:
                    AND NEW.status IS DISTINCT FROM OLD.status
                    AND NOT trusted_finalizer
                    AND NOT (
-                       (OLD.status='requested' AND NEW.status IN ('running','failed','expired')) OR
-                       (OLD.status='running' AND NEW.status IN ('succeeded','failed','expired')) OR
+                       (OLD.status='requested' AND NEW.status IN ('running','failed')) OR
+                       (OLD.status='running' AND NEW.status IN ('succeeded','failed')) OR
                        (OLD.status='succeeded' AND NEW.status='expired') OR
                        (OLD.status='expired' AND NEW.status='deleted')
                    ) THEN
@@ -1057,11 +1060,33 @@ def _create_trigger_functions_and_triggers() -> None:
                 END IF;
             ELSIF TG_TABLE_NAME = 'backup_snapshots' THEN
                 IF OLD.verification_status='verified'
-                   AND NOT (TG_OP='UPDATE' AND OLD.status='succeeded'
-                            AND NEW.status IN ('expired','deleted')
-                            AND NEW.id=OLD.id AND NEW.provider=OLD.provider
-                            AND NEW.provider_snapshot_id=OLD.provider_snapshot_id
-                            AND NEW.checksum_sha256=OLD.checksum_sha256) THEN
+                   AND NOT (TG_OP='UPDATE'
+                            AND ((OLD.status='succeeded' AND NEW.status='expired')
+                                 OR (OLD.status='expired' AND NEW.status='deleted'))
+                            AND NEW.id IS NOT DISTINCT FROM OLD.id
+                            AND NEW.environment_name IS NOT DISTINCT FROM OLD.environment_name
+                            AND NEW.provider IS NOT DISTINCT FROM OLD.provider
+                            AND NEW.provider_snapshot_id IS NOT DISTINCT FROM OLD.provider_snapshot_id
+                            AND NEW.backup_type IS NOT DISTINCT FROM OLD.backup_type
+                            AND NEW.verification_status IS NOT DISTINCT FROM OLD.verification_status
+                            AND NEW.postgres_version IS NOT DISTINCT FROM OLD.postgres_version
+                            AND NEW.alembic_revision IS NOT DISTINCT FROM OLD.alembic_revision
+                            AND NEW.database_identifier IS NOT DISTINCT FROM OLD.database_identifier
+                            AND NEW.recovery_point_at IS NOT DISTINCT FROM OLD.recovery_point_at
+                            AND NEW.started_at IS NOT DISTINCT FROM OLD.started_at
+                            AND NEW.finished_at IS NOT DISTINCT FROM OLD.finished_at
+                            AND NEW.size_bytes IS NOT DISTINCT FROM OLD.size_bytes
+                            AND NEW.checksum_sha256 IS NOT DISTINCT FROM OLD.checksum_sha256
+                            AND NEW.storage_uri IS NOT DISTINCT FROM OLD.storage_uri
+                            AND NEW.encrypted IS NOT DISTINCT FROM OLD.encrypted
+                            AND NEW.encryption_method IS NOT DISTINCT FROM OLD.encryption_method
+                            AND NEW.encryption_key_reference IS NOT DISTINCT FROM OLD.encryption_key_reference
+                            AND NEW.retention_until IS NOT DISTINCT FROM OLD.retention_until
+                            AND NEW.verified_by IS NOT DISTINCT FROM OLD.verified_by
+                            AND NEW.verified_at IS NOT DISTINCT FROM OLD.verified_at
+                            AND NEW.metadata_json IS NOT DISTINCT FROM OLD.metadata_json
+                            AND NEW.error_message IS NOT DISTINCT FROM OLD.error_message
+                            AND NEW.created_at IS NOT DISTINCT FROM OLD.created_at) THEN
                     RAISE EXCEPTION 'verified backup evidence is immutable' USING ERRCODE='23514';
                 END IF;
             ELSIF TG_TABLE_NAME IN ('restore_drills','health_check_runs') THEN
