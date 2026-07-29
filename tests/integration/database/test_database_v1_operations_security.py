@@ -116,6 +116,64 @@ def test_security_baseline_view_declares_every_violation_category(engine: sa.Eng
     assert all(code in definition for code in expected)
 
 
+@pytest.mark.parametrize(
+    ("violation_code", "statement"),
+    [
+        ("client_private_schema_access", "GRANT USAGE ON SCHEMA operations TO anon"),
+        ("public_private_schema_access", "GRANT USAGE ON SCHEMA operations TO PUBLIC"),
+        (
+            "client_private_relation_access",
+            "GRANT SELECT ON operations.partition_policies TO authenticated",
+        ),
+        (
+            "public_private_relation_access",
+            "GRANT SELECT ON operations.partition_policies TO PUBLIC",
+        ),
+        ("api_relation_present", "CREATE TABLE api.security_probe (id integer)"),
+        ("unsafe_api_function", "ALTER FUNCTION api.get_job_v1(uuid) SECURITY INVOKER"),
+        ("public_api_execute", "GRANT EXECUTE ON FUNCTION api.get_job_v1(uuid) TO PUBLIC"),
+        ("missing_api_execute", "REVOKE EXECUTE ON FUNCTION api.get_job_v1(uuid) FROM anon"),
+        (
+            "operations_rls_disabled",
+            "ALTER TABLE operations.partition_policies DISABLE ROW LEVEL SECURITY",
+        ),
+        (
+            "operations_client_policy",
+            "CREATE POLICY security_probe ON operations.partition_policies TO anon USING (false)",
+        ),
+        (
+            "operations_client_function_execute",
+            "GRANT EXECUTE ON FUNCTION operations.assert_security_baseline_v1() TO anon",
+        ),
+        (
+            "operations_public_function_execute",
+            "GRANT EXECUTE ON FUNCTION operations.assert_security_baseline_v1() TO PUBLIC",
+        ),
+        ("public_schema_create", "GRANT CREATE ON SCHEMA public TO authenticated"),
+    ],
+)
+def test_security_baseline_rejects_each_violation_category(
+    engine: sa.Engine, violation_code: str, statement: str
+) -> None:
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            connection.execute(sa.text(statement))
+            assert connection.scalar(
+                sa.text(
+                    """SELECT EXISTS (SELECT 1
+                    FROM operations.v_security_privilege_violations
+                    WHERE violation_code=:code)"""
+                ),
+                {"code": violation_code},
+            )
+            with pytest.raises(IntegrityError) as error:
+                connection.execute(sa.text("SELECT operations.assert_security_baseline_v1()"))
+            assert getattr(error.value.orig, "sqlstate", None) == "23514"
+        finally:
+            transaction.rollback()
+
+
 def _protected_rows(connection: sa.Connection) -> dict[str, object]:
     suffix = uuid4().hex
     policy = connection.scalar(
