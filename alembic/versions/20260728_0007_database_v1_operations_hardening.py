@@ -287,7 +287,9 @@ def _create_backup_restore_tables() -> None:
                 (checksum_sha256 IS NULL OR checksum_sha256 ~ '^[0-9a-f]{64}$'),
             CONSTRAINT ck_backup_snapshots__uri CHECK
                 (storage_uri IS NULL OR
-                 (storage_uri !~ '[?@]' AND storage_uri !~* '(password|token|secret|key)=')),
+                 (storage_uri !~ '[?#@]'
+                  AND storage_uri !~* '(postgres(ql)?://|password|token|secret|key)='
+                  AND storage_uri !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)')),
             CONSTRAINT ck_backup_snapshots__json CHECK
                 (jsonb_typeof(metadata_json) = 'object'),
             CONSTRAINT ck_backup_snapshots__encryption CHECK
@@ -295,8 +297,9 @@ def _create_backup_restore_tables() -> None:
                  (encryption_method IS NOT NULL AND length(trim(encryption_method)) > 0)),
             CONSTRAINT ck_backup_snapshots__key_reference CHECK
                 (encryption_key_reference IS NULL OR
-                 (encryption_key_reference !~* '(postgres(ql)?://|password=|token=|secret=)'
-                  AND encryption_key_reference !~ '[?@]')),
+                 (encryption_key_reference !~* '(postgres(ql)?://|password|token|secret|key)='
+                  AND encryption_key_reference !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)'
+                  AND encryption_key_reference !~ '[?#@]')),
             CONSTRAINT ck_backup_snapshots__succeeded CHECK
                 (status != 'succeeded' OR
                  (recovery_point_at IS NOT NULL AND started_at IS NOT NULL
@@ -777,7 +780,11 @@ def _create_trigger_functions_and_triggers() -> None:
         CREATE FUNCTION operations.enforce_run_lifecycle()
         RETURNS trigger LANGUAGE plpgsql
         SET search_path = pg_catalog, operations AS $$
-        DECLARE guard TEXT := current_setting('operations.finalizer', true);
+        DECLARE trusted_finalizer BOOLEAN := current_user = (
+            SELECT namespace.nspowner::regrole::text
+            FROM pg_namespace AS namespace
+            WHERE namespace.nspname = 'operations'
+        );
         BEGIN
             IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
                 IF TG_TABLE_NAME = 'retention_runs' AND NOT (
@@ -793,22 +800,48 @@ def _create_trigger_functions_and_triggers() -> None:
                         ('succeeded','partially_succeeded','failed'))
                 ) THEN RAISE EXCEPTION 'invalid retention lifecycle transition'
                     USING ERRCODE='23514'; END IF;
+                ELSIF TG_TABLE_NAME='archive_manifests' AND NOT (
+                    (OLD.status='pending' AND NEW.status IN ('writing','failed','expired')) OR
+                    (OLD.status='writing' AND NEW.status IN ('written','failed','expired')) OR
+                    (OLD.status='written' AND NEW.status IN ('verified','failed','expired')) OR
+                    (OLD.status='verified' AND NEW.status='expired')
+                ) THEN RAISE EXCEPTION 'invalid archive lifecycle transition' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='backup_snapshots' AND NOT (
+                    (OLD.status='requested' AND NEW.status IN ('running','failed','expired')) OR
+                    (OLD.status='running' AND NEW.status IN ('succeeded','failed','expired')) OR
+                    (OLD.status='succeeded' AND NEW.status='expired') OR
+                    (OLD.status='expired' AND NEW.status='deleted')
+                ) THEN RAISE EXCEPTION 'invalid backup lifecycle transition' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='restore_drills' AND NOT (
+                    (OLD.status='pending' AND NEW.status IN ('running','cancelled')) OR
+                    (OLD.status='running' AND NEW.status IN ('succeeded','failed','cancelled'))
+                ) THEN RAISE EXCEPTION 'invalid restore lifecycle transition' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='maintenance_runs' AND NOT (
+                    (OLD.status='pending' AND NEW.status IN ('running','cancelled')) OR
+                    (OLD.status='running' AND NEW.status IN
+                        ('succeeded','partially_succeeded','failed','cancelled'))
+                ) THEN RAISE EXCEPTION 'invalid maintenance lifecycle transition' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='health_check_runs' AND NOT (
+                    (OLD.status='pending' AND NEW.status IN ('running','cancelled')) OR
+                    (OLD.status='running' AND NEW.status IN
+                        ('passed','passed_with_warnings','failed','cancelled'))
+                ) THEN RAISE EXCEPTION 'invalid health lifecycle transition' USING ERRCODE='23514';
             END IF;
 
             IF TG_TABLE_NAME = 'retention_runs' THEN
-                IF NEW.status='delete_authorized' AND guard IS DISTINCT FROM 'retention_delete' THEN
+                IF NEW.status='delete_authorized' AND NOT trusted_finalizer THEN
                     RAISE EXCEPTION 'retention authorization requires finalizer' USING ERRCODE='23514';
                 END IF;
             ELSIF TG_TABLE_NAME = 'archive_manifests' THEN
-                IF NEW.status='verified' AND guard IS DISTINCT FROM 'archive_manifest' THEN
+                IF NEW.status='verified' AND NOT trusted_finalizer THEN
                     RAISE EXCEPTION 'archive verification requires finalizer' USING ERRCODE='23514';
                 END IF;
             ELSIF TG_TABLE_NAME = 'backup_snapshots' THEN
-                IF NEW.verification_status='verified' AND guard IS DISTINCT FROM 'backup_snapshot' THEN
+                IF NEW.verification_status='verified' AND NOT trusted_finalizer THEN
                     RAISE EXCEPTION 'backup verification requires finalizer' USING ERRCODE='23514';
                 END IF;
             ELSIF TG_TABLE_NAME = 'restore_drills' THEN
-                IF NEW.status='succeeded' AND guard IS DISTINCT FROM 'restore_drill' THEN
+                IF NEW.status='succeeded' AND NOT trusted_finalizer THEN
                     RAISE EXCEPTION 'restore success requires finalizer' USING ERRCODE='23514';
                 END IF;
                 IF NEW.status='running' AND NOT EXISTS (
@@ -820,7 +853,7 @@ def _create_trigger_functions_and_triggers() -> None:
                 END IF;
             ELSIF TG_TABLE_NAME = 'health_check_runs'
                AND NEW.status IN ('passed','passed_with_warnings','failed')
-               AND guard IS DISTINCT FROM 'health_check' THEN
+               AND NOT trusted_finalizer THEN
                 RAISE EXCEPTION 'health outcome requires finalizer' USING ERRCODE='23514';
             END IF;
             NEW.updated_at := now();
@@ -836,17 +869,28 @@ def _create_trigger_functions_and_triggers() -> None:
         DECLARE parent_status TEXT;
         BEGIN
             IF TG_TABLE_NAME = 'retention_run_items' THEN
-                SELECT status INTO parent_status FROM operations.retention_runs
-                WHERE id=COALESCE(NEW.retention_run_id, OLD.retention_run_id) FOR UPDATE;
+                IF TG_OP='DELETE' THEN
+                    SELECT status INTO parent_status FROM operations.retention_runs
+                    WHERE id=OLD.retention_run_id FOR UPDATE;
+                ELSE
+                    SELECT status INTO parent_status FROM operations.retention_runs
+                    WHERE id=NEW.retention_run_id FOR UPDATE;
+                END IF;
+                IF parent_status IN ('delete_authorized','deleting','succeeded',
+                                     'partially_succeeded','failed','cancelled') THEN
+                    RAISE EXCEPTION 'retention items are immutable after authorization'
+                        USING ERRCODE='23514';
+                END IF;
                 IF TG_OP='UPDATE' AND OLD.status='deleted' AND NEW.status!='deleted' THEN
                     RAISE EXCEPTION 'deleted retention evidence is irreversible'
                         USING ERRCODE='23514';
                 END IF;
-                IF NEW.status='deleted' AND parent_status NOT IN ('delete_authorized','deleting') THEN
+                IF TG_OP <> 'DELETE' AND NEW.status='deleted'
+                   AND parent_status NOT IN ('delete_authorized','deleting') THEN
                     RAISE EXCEPTION 'deleted item requires authorized parent'
                         USING ERRCODE='23514';
                 END IF;
-                IF NEW.status IN ('archived','delete_authorized','deleted')
+                IF TG_OP <> 'DELETE' AND NEW.status IN ('archived','delete_authorized','deleted')
                    AND EXISTS (
                        SELECT 1 FROM operations.retention_runs AS run
                        JOIN operations.retention_policies AS policy ON policy.id=run.policy_id
@@ -855,15 +899,25 @@ def _create_trigger_functions_and_triggers() -> None:
                    ) THEN RAISE EXCEPTION 'archive evidence is required'
                        USING ERRCODE='23514'; END IF;
             ELSIF TG_TABLE_NAME = 'restore_drill_checks' THEN
-                SELECT status INTO parent_status FROM operations.restore_drills
-                WHERE id=COALESCE(NEW.restore_drill_id, OLD.restore_drill_id) FOR UPDATE;
+                IF TG_OP='DELETE' THEN
+                    SELECT status INTO parent_status FROM operations.restore_drills
+                    WHERE id=OLD.restore_drill_id FOR UPDATE;
+                ELSE
+                    SELECT status INTO parent_status FROM operations.restore_drills
+                    WHERE id=NEW.restore_drill_id FOR UPDATE;
+                END IF;
                 IF parent_status IN ('succeeded','failed','cancelled') THEN
                     RAISE EXCEPTION 'terminal restore evidence is immutable'
                         USING ERRCODE='23514';
                 END IF;
             ELSIF TG_TABLE_NAME = 'health_check_results' THEN
-                SELECT status INTO parent_status FROM operations.health_check_runs
-                WHERE id=COALESCE(NEW.health_check_run_id, OLD.health_check_run_id) FOR UPDATE;
+                IF TG_OP='DELETE' THEN
+                    SELECT status INTO parent_status FROM operations.health_check_runs
+                    WHERE id=OLD.health_check_run_id FOR UPDATE;
+                ELSE
+                    SELECT status INTO parent_status FROM operations.health_check_runs
+                    WHERE id=NEW.health_check_run_id FOR UPDATE;
+                END IF;
                 IF parent_status IN ('passed','passed_with_warnings','failed','cancelled') THEN
                     RAISE EXCEPTION 'finalized health evidence is immutable'
                         USING ERRCODE='23514';
@@ -939,7 +993,7 @@ def _create_trigger_functions_and_triggers() -> None:
     ):
         op.execute(
             f"CREATE TRIGGER trg_{table_name}__protect_finalized "
-            f"BEFORE UPDATE OR DELETE ON operations.{table_name} "
+            f"BEFORE INSERT OR UPDATE OR DELETE ON operations.{table_name} "
             "FOR EACH ROW EXECUTE FUNCTION operations.protect_finalized_operational_record()"
         )
     op.execute(
@@ -1219,7 +1273,8 @@ def _create_callable_functions() -> None:
         DECLARE run operations.retention_runs%ROWTYPE;
                 policy operations.retention_policies%ROWTYPE;
                 manifest operations.archive_manifests%ROWTYPE;
-                item_count BIGINT;
+                item_count BIGINT; archived_count BIGINT; skipped_count BIGINT;
+                failed_count BIGINT; manifest_count BIGINT;
         BEGIN
             IF p_authorized_by IS NULL OR length(trim(p_authorized_by))=0 THEN
                 RAISE EXCEPTION 'authorization actor is required' USING ERRCODE='23514';
@@ -1231,27 +1286,42 @@ def _create_callable_functions() -> None:
             SELECT * INTO policy FROM operations.retention_policies
             WHERE id=run.policy_id FOR UPDATE;
             IF NOT policy.enabled OR policy.legal_hold OR run.dry_run
-               OR run.status!='archive_verified' OR run.failed_count!=0
-               OR run.candidate_count<=0 THEN
+               OR run.candidate_count<=0
+               OR (policy.requires_archive AND run.status!='archive_verified')
+               OR (NOT policy.requires_archive AND run.status!='running') THEN
                 RAISE EXCEPTION 'retention run is not delete-authorizable'
                     USING ERRCODE='23514';
             END IF;
-            SELECT count(*) INTO item_count FROM operations.retention_run_items
-            WHERE retention_run_id=run.id;
-            IF item_count!=run.candidate_count THEN
-                RAISE EXCEPTION 'retention item count mismatch' USING ERRCODE='23514';
+            SELECT count(*), count(*) FILTER (WHERE status='archived'),
+                   count(*) FILTER (WHERE status='skipped'),
+                   count(*) FILTER (WHERE status='failed')
+              INTO item_count, archived_count, skipped_count, failed_count
+              FROM operations.retention_run_items WHERE retention_run_id=run.id;
+            IF item_count != run.candidate_count
+               OR archived_count != run.archived_count
+               OR skipped_count != run.skipped_count
+               OR failed_count != run.failed_count
+               OR failed_count != 0 THEN
+                RAISE EXCEPTION 'retention counters do not match item evidence' USING ERRCODE='23514';
             END IF;
             IF policy.requires_archive THEN
+                SELECT count(*) INTO manifest_count FROM operations.archive_manifests
+                 WHERE retention_run_id=run.id AND status='verified';
+                IF manifest_count != 1 THEN
+                    RAISE EXCEPTION 'exactly one verified archive manifest is required'
+                        USING ERRCODE='23514';
+                END IF;
                 SELECT * INTO manifest FROM operations.archive_manifests
-                WHERE retention_run_id=run.id AND status='verified';
-                IF NOT FOUND OR manifest.target_schema!=policy.target_schema
+                 WHERE retention_run_id=run.id AND status='verified' FOR UPDATE;
+                IF manifest.target_schema!=policy.target_schema
                    OR manifest.target_table!=policy.target_table
-                   OR manifest.row_count!=run.candidate_count
+                   OR manifest.row_count!=archived_count
                    OR EXISTS (
                        SELECT 1 FROM operations.retention_run_items AS item
                        LEFT JOIN operations.archive_objects AS object
                          ON object.id=item.archive_object_id
                        WHERE item.retention_run_id=run.id
+                         AND item.status!='skipped'
                          AND (item.status!='archived' OR item.record_sha256 IS NULL
                               OR object.archive_manifest_id IS DISTINCT FROM manifest.id
                               OR object.status!='verified')
@@ -1260,9 +1330,9 @@ def _create_callable_functions() -> None:
                         USING ERRCODE='23514';
                 END IF;
             END IF;
-            PERFORM set_config('operations.finalizer','retention_delete',true);
-            UPDATE operations.retention_run_items SET status='delete_authorized',
-                   updated_at=now() WHERE retention_run_id=run.id;
+            UPDATE operations.retention_run_items SET status='delete_authorized', updated_at=now()
+             WHERE retention_run_id=run.id
+               AND status = CASE WHEN policy.requires_archive THEN 'archived' ELSE 'candidate' END;
             UPDATE operations.retention_runs SET status='delete_authorized',
                    delete_authorized_by=trim(p_authorized_by),
                    delete_authorized_at=now(), updated_at=now() WHERE id=run.id
@@ -1310,7 +1380,6 @@ def _create_callable_functions() -> None:
                      AND policy.target_table=manifest.target_table)) THEN
                 RAISE EXCEPTION 'archive manifest evidence mismatch' USING ERRCODE='23514';
             END IF;
-            PERFORM set_config('operations.finalizer','archive_manifest',true);
             UPDATE operations.archive_manifests SET status='verified',
                    verified_by=trim(p_verified_by), verified_at=now(), updated_at=now()
              WHERE id=manifest.id RETURNING * INTO manifest;
@@ -1333,19 +1402,22 @@ def _create_callable_functions() -> None:
             END IF;
             SELECT * INTO backup FROM operations.backup_snapshots
             WHERE id=p_backup_snapshot_id FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'backup snapshot not found' USING ERRCODE='23514';
+            END IF;
             SELECT version_num INTO current_revision FROM public.alembic_version LIMIT 1;
-            IF NOT FOUND OR backup.status!='succeeded'
+            IF backup.status!='succeeded'
                OR backup.verification_status!='pending'
                OR backup.recovery_point_at IS NULL OR backup.finished_at IS NULL
                OR COALESCE(backup.size_bytes,0)<=0 OR backup.checksum_sha256 IS NULL
-               OR backup.storage_uri IS NULL OR backup.encryption_method IS NULL
-               OR (backup.encrypted AND backup.encryption_key_reference IS NULL)
+               OR backup.storage_uri IS NULL OR NOT backup.encrypted
+               OR backup.encryption_method IS NULL OR length(trim(backup.encryption_method))=0
+               OR backup.encryption_key_reference IS NULL
+               OR length(trim(backup.encryption_key_reference))=0
                OR (backup.alembic_revision!=current_revision
-                   AND COALESCE((backup.metadata_json->>'allow_older_revision')::boolean,false)
-                       IS NOT true) THEN
+                   AND NOT (backup.metadata_json @> '{"allow_older_revision": true}'::jsonb)) THEN
                 RAISE EXCEPTION 'backup evidence is not verifiable' USING ERRCODE='23514';
             END IF;
-            PERFORM set_config('operations.finalizer','backup_snapshot',true);
             UPDATE operations.backup_snapshots SET verification_status='verified',
                    verified_by=trim(p_verified_by), verified_at=now(), updated_at=now()
              WHERE id=backup.id RETURNING * INTO backup;
@@ -1364,17 +1436,21 @@ def _create_restore_and_health_finalizers() -> None:
         LANGUAGE plpgsql SECURITY DEFINER
         SET search_path = pg_catalog, operations AS $$
         DECLARE drill operations.restore_drills%ROWTYPE;
+                backup operations.backup_snapshots%ROWTYPE;
                 mandatory TEXT[] := ARRAY['alembic_revision','schema_inventory',
                     'row_count_baseline','foreign_key_constraints','api_contract',
                     'security_grants_rls','sample_query_smoke','backup_checksum'];
         BEGIN
             SELECT * INTO drill FROM operations.restore_drills
             WHERE id=p_restore_drill_id FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'restore drill not found' USING ERRCODE='23514';
+            END IF;
+            SELECT * INTO backup FROM operations.backup_snapshots
+             WHERE id=drill.backup_snapshot_id FOR UPDATE;
             IF NOT FOUND OR drill.status!='running' OR drill.measured_restore_seconds IS NULL
-               OR NOT EXISTS (
-                   SELECT 1 FROM operations.backup_snapshots
-                   WHERE id=drill.backup_snapshot_id AND status='succeeded'
-                     AND verification_status='verified')
+               OR NOT FOUND OR backup.status!='succeeded'
+               OR backup.verification_status!='verified'
                OR EXISTS (
                    SELECT code FROM unnest(mandatory) AS code
                    WHERE NOT EXISTS (
@@ -1389,10 +1465,13 @@ def _create_restore_and_health_finalizers() -> None:
                OR NOT EXISTS (
                    SELECT 1 FROM operations.restore_drill_checks
                    WHERE restore_drill_id=drill.id AND check_code='alembic_revision'
-                     AND actual_json->>'revision'=drill.target_alembic_revision) THEN
+                     AND actual_json->>'revision'=drill.target_alembic_revision)
+               OR NOT EXISTS (
+                   SELECT 1 FROM operations.restore_drill_checks
+                    WHERE restore_drill_id=drill.id AND check_code='backup_checksum'
+                      AND actual_json->>'checksum'=backup.checksum_sha256) THEN
                 RAISE EXCEPTION 'restore drill evidence is incomplete' USING ERRCODE='23514';
             END IF;
-            PERFORM set_config('operations.finalizer','restore_drill',true);
             UPDATE operations.restore_drills SET status='succeeded', finished_at=now(),
                    updated_at=now() WHERE id=drill.id RETURNING * INTO drill;
             RETURN drill;
@@ -1560,7 +1639,6 @@ def downgrade() -> None:
                    count(*) FILTER (WHERE status='failed')
               INTO passed,warnings,failures FROM operations.health_check_results
              WHERE health_check_run_id=run.id;
-            PERFORM set_config('operations.finalizer','health_check',true);
             UPDATE operations.health_check_runs
                SET passed_count=passed, warning_count=warnings, failed_count=failures,
                    status=CASE WHEN failures>0 THEN 'failed'
@@ -1835,7 +1913,6 @@ def _create_remaining_functions() -> None:
                    count(*) FILTER (WHERE status='failed')
               INTO passed,warnings,failures FROM operations.health_check_results
              WHERE health_check_run_id=run.id;
-            PERFORM set_config('operations.finalizer','health_check',true);
             UPDATE operations.health_check_runs
                SET passed_count=passed, warning_count=warnings, failed_count=failures,
                    status=CASE WHEN failures>0 THEN 'failed'
