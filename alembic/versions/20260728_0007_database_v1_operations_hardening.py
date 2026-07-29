@@ -316,7 +316,7 @@ def _create_backup_restore_tables() -> None:
                  (error_message IS NOT NULL AND length(trim(error_message)) > 0)),
             CONSTRAINT ck_backup_snapshots__verified CHECK
                 (verification_status != 'verified' OR
-                 (status = 'succeeded' AND checksum_sha256 IS NOT NULL
+                 (status IN ('succeeded','expired','deleted') AND checksum_sha256 IS NOT NULL
                   AND size_bytes > 0 AND storage_uri IS NOT NULL
                   AND verified_by IS NOT NULL AND length(trim(verified_by)) > 0
                   AND verified_at IS NOT NULL)),
