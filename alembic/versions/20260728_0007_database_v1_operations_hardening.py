@@ -854,50 +854,55 @@ def _create_trigger_functions_and_triggers() -> None:
             END IF;
 
             IF TG_OP='UPDATE' THEN
-                IF TG_TABLE_NAME='retention_runs' AND (
-                    OLD.status<>'pending' OR EXISTS (
+                IF TG_TABLE_NAME='retention_runs' THEN
+                    IF (OLD.status<>'pending' OR EXISTS (
                         SELECT 1 FROM operations.retention_run_items WHERE retention_run_id=OLD.id
                     ) OR EXISTS (
                         SELECT 1 FROM operations.archive_manifests WHERE retention_run_id=OLD.id
                     )
-                ) AND (NEW.policy_id IS DISTINCT FROM OLD.policy_id
+                    ) AND (NEW.policy_id IS DISTINCT FROM OLD.policy_id
                          OR NEW.cutoff_at IS DISTINCT FROM OLD.cutoff_at
                          OR NEW.dry_run IS DISTINCT FROM OLD.dry_run) THEN
-                    RAISE EXCEPTION 'retention run execution identity is immutable' USING ERRCODE='23514';
-                ELSIF TG_TABLE_NAME='backup_snapshots' AND OLD.status<>'requested'
-                   AND (NEW.provider IS DISTINCT FROM OLD.provider
+                        RAISE EXCEPTION 'retention run execution identity is immutable' USING ERRCODE='23514';
+                    END IF;
+                ELSIF TG_TABLE_NAME='backup_snapshots' THEN
+                    IF OLD.status<>'requested' AND (NEW.provider IS DISTINCT FROM OLD.provider
                         OR NEW.provider_snapshot_id IS DISTINCT FROM OLD.provider_snapshot_id
                         OR NEW.backup_type IS DISTINCT FROM OLD.backup_type
                         OR NEW.database_identifier IS DISTINCT FROM OLD.database_identifier
                         OR NEW.postgres_version IS DISTINCT FROM OLD.postgres_version
                         OR NEW.alembic_revision IS DISTINCT FROM OLD.alembic_revision) THEN
-                    RAISE EXCEPTION 'backup execution identity is immutable' USING ERRCODE='23514';
-                ELSIF TG_TABLE_NAME='restore_drills' AND (
-                    OLD.status<>'pending' OR EXISTS (
+                        RAISE EXCEPTION 'backup execution identity is immutable' USING ERRCODE='23514';
+                    END IF;
+                ELSIF TG_TABLE_NAME='restore_drills' THEN
+                    IF (OLD.status<>'pending' OR EXISTS (
                         SELECT 1 FROM operations.restore_drill_checks WHERE restore_drill_id=OLD.id
                     )
-                ) AND (NEW.backup_snapshot_id IS DISTINCT FROM OLD.backup_snapshot_id
+                    ) AND (NEW.backup_snapshot_id IS DISTINCT FROM OLD.backup_snapshot_id
                          OR NEW.environment_name IS DISTINCT FROM OLD.environment_name
                          OR NEW.target_alembic_revision IS DISTINCT FROM OLD.target_alembic_revision
                          OR NEW.initiated_by IS DISTINCT FROM OLD.initiated_by
                          OR NEW.rto_target_seconds IS DISTINCT FROM OLD.rto_target_seconds
                          OR NEW.rpo_target_seconds IS DISTINCT FROM OLD.rpo_target_seconds) THEN
-                    RAISE EXCEPTION 'restore drill execution identity is immutable' USING ERRCODE='23514';
-                ELSIF TG_TABLE_NAME='health_check_runs' AND (
-                    OLD.status<>'pending' OR EXISTS (
+                        RAISE EXCEPTION 'restore drill execution identity is immutable' USING ERRCODE='23514';
+                    END IF;
+                ELSIF TG_TABLE_NAME='health_check_runs' THEN
+                    IF (OLD.status<>'pending' OR EXISTS (
                         SELECT 1 FROM operations.health_check_results WHERE health_check_run_id=OLD.id
                     )
-                ) AND (NEW.suite_version IS DISTINCT FROM OLD.suite_version
+                    ) AND (NEW.suite_version IS DISTINCT FROM OLD.suite_version
                          OR NEW.environment_name IS DISTINCT FROM OLD.environment_name
                          OR NEW.scope IS DISTINCT FROM OLD.scope) THEN
-                    RAISE EXCEPTION 'health check identity is immutable' USING ERRCODE='23514';
-                ELSIF TG_TABLE_NAME='maintenance_runs' AND OLD.status<>'pending'
-                   AND (NEW.run_type IS DISTINCT FROM OLD.run_type
+                        RAISE EXCEPTION 'health check identity is immutable' USING ERRCODE='23514';
+                    END IF;
+                ELSIF TG_TABLE_NAME='maintenance_runs' THEN
+                    IF OLD.status<>'pending' AND (NEW.run_type IS DISTINCT FROM OLD.run_type
                         OR NEW.target_schema IS DISTINCT FROM OLD.target_schema
                         OR NEW.target_table IS DISTINCT FROM OLD.target_table
                         OR NEW.dry_run IS DISTINCT FROM OLD.dry_run
                         OR NEW.requested_by IS DISTINCT FROM OLD.requested_by) THEN
-                    RAISE EXCEPTION 'maintenance execution identity is immutable' USING ERRCODE='23514';
+                        RAISE EXCEPTION 'maintenance execution identity is immutable' USING ERRCODE='23514';
+                    END IF;
                 END IF;
             END IF;
 
