@@ -173,6 +173,28 @@ def test_security_baseline_detects_transient_unsafe_grant(engine: sa.Engine) -> 
             transaction.rollback()
 
 
+def test_service_role_cannot_spoof_finalizer_context(engine: sa.Engine) -> None:
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        backup_id = _backup(connection, "spoofed-finalizer")
+        connection.execute(sa.text("SET LOCAL ROLE service_role"))
+        connection.execute(sa.text("SET LOCAL operations.finalizer = 'archive_manifest'"))
+        connection.execute(
+            sa.text("SELECT set_config('operations.finalizer', 'backup_snapshot', true)")
+        )
+        with pytest.raises(IntegrityError) as error:
+            connection.execute(
+                sa.text(
+                    """UPDATE operations.backup_snapshots
+                    SET verification_status='verified', verified_by='spoof', verified_at=now()
+                    WHERE id=:id"""
+                ),
+                {"id": backup_id},
+            )
+        assert getattr(error.value.orig, "sqlstate", None) == "23514"
+        transaction.rollback()
+
+
 def test_partition_and_retention_policy_guards(engine: sa.Engine) -> None:
     _reject(
         engine,

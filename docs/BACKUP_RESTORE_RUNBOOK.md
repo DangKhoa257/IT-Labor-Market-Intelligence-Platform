@@ -9,6 +9,12 @@ encryption reference, and Alembic revision. Finalize a valid succeeded backup
 through `operations.finalize_backup_snapshot_v1(id, verified_by)`. Verified
 backup identity and evidence are immutable.
 
+Backups must be encrypted. Store only a nonblank key reference, never a
+connection string, query/fragment URI, password/token/secret assignment,
+`sk-` key, JWT-like `eyJ` value, or PEM/private-key material. An older Alembic
+revision is accepted only when metadata has the exact JSON boolean
+`{"allow_older_revision": true}`.
+
 Create a restore drill from a verified backup, execute the external restore,
 and record all eight mandatory checks: `alembic_revision`, `schema_inventory`,
 `row_count_baseline`, `foreign_key_constraints`, `api_contract`,
