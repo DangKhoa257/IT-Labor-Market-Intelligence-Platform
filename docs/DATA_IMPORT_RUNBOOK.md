@@ -1,5 +1,9 @@
 # Data Import Runbook
 
+Migration 007 records operational evidence separately from import execution. It does not alter
+the importer, add a scheduler, or perform retention deletion; see the operations runbooks for
+externally executed backup, restore, archive, retention, and health evidence.
+
 Start and verify PostgreSQL:
 
 ```powershell
@@ -7,16 +11,18 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-Apply and verify Database V1 migrations 001 through 006:
+Apply and verify Database V1 migrations 001 through 007 and the security baseline:
 
 ```powershell
 alembic upgrade head
 alembic current
+psql $env:DATABASE_URL -c "SELECT operations.assert_security_baseline_v1();"
 ```
 
 Migration 003 creates a canonical current-state destination, Migration 004 adds immutable history
 and quality-review storage, Migration 005 adds analytics storage and deterministic seed rows, and
-Migration 006 adds rebuildable serving caches and a function-only RPC schema.
+Migration 006 adds rebuildable serving caches and a function-only RPC schema. Migration 007 adds
+private operations evidence and does not add an importer or worker.
 They do not include the normalization/application service, full observation writer, automatic
 diffing, lifecycle scheduling, production analytics refresh scheduler, or deduplication algorithm.
 The legacy `import_dataset` command belongs to the prototype Phase 3 database and must not be run

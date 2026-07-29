@@ -1,6 +1,9 @@
 # Canonical Data Schema
 
-**Phiên bản:** 0.5 (Database V1 Migration 006 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, `quality`, `analytics`, và `serving`. Migration 006 không thêm field exchange nên header gold template không đổi.
+The exchange contract remains fully **Database V1 Migration 006 compatibility** compatible;
+Migration 007 adds private operational evidence only.
+
+**Phiên bản:** 0.5 (Database V1 Migration 007 compatibility). Mọi thay đổi bảng này phải cập nhật gold template và schema tests. Thời gian dùng ISO 8601 có timezone; tiền tệ dùng ISO 4217; `array<string>` được biểu diễn bằng JSON array khi trao đổi qua CSV. Bảng field bên dưới vẫn là exchange/gold contract tương thích pipeline hiện tại; relational storage chuẩn là `core`, `taxonomy`, `history`, `quality`, `analytics`, `serving`, và operational evidence private trong `operations`. Migration 007 không thêm field exchange nên header gold template không đổi.
 
 ## Phân loại provenance
 
@@ -115,6 +118,13 @@
 - Salary projections are atomically rebuilt from the selected observation by PostgreSQL. Public
   RPC validation is NULL-safe, ordering is deterministic, and dashboard returns use explicit
   descriptive columns rather than private relation row types.
+
+### Database V1 Migration 007 operations mapping
+
+- `operations` stores only private evidence for advisory partition policy, retention/archive,
+  backup/restore, maintenance, and health checks; it does not change the exchange contract.
+- Its security baseline, RLS, exact service-role grants, and finalizers protect operational
+  evidence without exposing tables or functions through `api`.
 
 ### JobPosting
 

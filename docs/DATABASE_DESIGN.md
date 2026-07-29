@@ -5,12 +5,15 @@ PostgreSQL 16 is the production database. Database V1 migrations 001 and 002 pro
 `taxonomy` reference data and the canonical current-state `core` schema. Migration 004 adds
 immutable `history` and review-oriented `quality` storage. Migration 005 adds the private,
 observation-derived `analytics` warehouse and rebuildable daily aggregates. Migration 006 adds a
-private current-search cache and internal analytics views plus a function-only `api` schema. See
+private current-search cache and internal analytics views plus a function-only `api` schema.
+Migration 007 adds private `operations` evidence, security hardening, finalization contracts,
+readiness/catalog views, and additive advisory indexes without physical partitioning. See
 [DATABASE_V1_FOUNDATION.md](DATABASE_V1_FOUNDATION.md) and
 [DATABASE_V1_CORE.md](DATABASE_V1_CORE.md), plus
 [DATABASE_V1_HISTORY_QUALITY.md](DATABASE_V1_HISTORY_QUALITY.md), plus
 [DATABASE_V1_ANALYTICS.md](DATABASE_V1_ANALYTICS.md), plus
-[DATABASE_V1_SERVING_API.md](DATABASE_V1_SERVING_API.md).
+[DATABASE_V1_SERVING_API.md](DATABASE_V1_SERVING_API.md), plus
+[DATABASE_V1_OPERATIONS.md](DATABASE_V1_OPERATIONS.md).
 
 The existing unqualified Phase 3 ORM (`Source`, canonical job, company, skill, snapshot, quality,
 and duplicate models) remains a prototype used by the current read-only API and isolated SQLite
@@ -45,7 +48,7 @@ descriptive Type 1 updates remain allowed.
 ```powershell
 alembic upgrade head
 alembic current
-alembic downgrade 20260727_0005
+alembic downgrade 20260727_0006
 ```
 
 No V1 migration uses metadata-driven `create_all()`/`drop_all()`, native enums, generic JSON, or

@@ -518,7 +518,7 @@ def test_inventory_head_indexes_and_rls(engine: sa.Engine) -> None:
     assert inspector.get_view_names(schema="api") == []
     with engine.connect() as connection:
         assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == (
-            "20260727_0006"
+            "20260728_0007"
         )
         functions = set(
             connection.scalars(

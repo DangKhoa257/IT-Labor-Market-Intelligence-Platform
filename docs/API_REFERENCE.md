@@ -1,5 +1,8 @@
 # Read-Only API Reference
 
+Migration 007 adds no public RPC functions. `operations` is private and service-role-only; the
+eight Version 1 API functions and their public contracts remain unchanged.
+
 Start the application with `uvicorn apps.api.main:app --reload`. Swagger is available at `http://127.0.0.1:8000/docs` and OpenAPI JSON at `/openapi.json`.
 
 The API exposes `/health` and the following `/api/v1` resources:
