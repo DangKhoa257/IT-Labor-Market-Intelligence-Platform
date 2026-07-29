@@ -140,6 +140,43 @@ def test_backup_rejects_direct_succeeded_to_deleted(engine: sa.Engine) -> None:
 
 
 @pytest.mark.parametrize(
+    "mutation",
+    [
+        "provider='changed'",
+        "backup_type='full'",
+        "postgres_version='17',alembic_revision='changed'",
+        "database_identifier='changed',recovery_point_at=now()-interval '1 day'",
+        "started_at=now()-interval '2 minutes',finished_at=now()-interval '1 minute'",
+        "size_bytes=2,checksum_sha256=repeat('d',64)",
+        "storage_uri='s3://bucket/changed'",
+        "encrypted=false,encryption_method=NULL,encryption_key_reference=NULL",
+        "retention_until=now()+interval '1 day'",
+        "verified_by='changed',verified_at=now()-interval '1 minute'",
+        "metadata_json=jsonb_build_object('changed',true),error_message='changed'",
+    ],
+)
+def test_verified_backup_expiry_and_deletion_freeze_each_evidence_group(
+    engine: sa.Engine, mutation: str
+) -> None:
+    for terminal_status in ("expired", "deleted"):
+        with engine.begin() as connection:
+            backup = _verified_backup(connection, f"frozen-{terminal_status}-{uuid4().hex}")
+            if terminal_status == "deleted":
+                connection.execute(
+                    sa.text("UPDATE operations.backup_snapshots SET status='expired' WHERE id=:id"),
+                    {"id": backup},
+                )
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    f"""UPDATE operations.backup_snapshots
+                    SET status='{terminal_status}',{mutation} WHERE id=:id"""
+                ),
+                {"id": backup},
+            )
+
+
+@pytest.mark.parametrize(
     ("initial_status", "initial_times", "new_status", "new_times"),
     [
         ("requested", "", "expired", ",started_at=now(),finished_at=now()"),

@@ -207,7 +207,7 @@ def test_four_partial_indexes_have_exact_predicates(engine: sa.Engine) -> None:
         ).all()
         rows: dict[str, str] = {str(row[0]): str(row[1]) for row in result}
     normalized = {
-        name: re.sub(r"[\s()\"]", "", predicate).lower() for name, predicate in rows.items()
+        name: re.sub(r"::text|[\s()\"]", "", predicate).lower() for name, predicate in rows.items()
     }
     assert normalized == {
         "ix_data_quality_issues__open_critical": (
