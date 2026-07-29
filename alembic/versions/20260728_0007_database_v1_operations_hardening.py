@@ -809,12 +809,6 @@ def _create_trigger_functions_and_triggers() -> None:
                     (OLD.status='written' AND NEW.status IN ('verified','failed','expired')) OR
                     (OLD.status='verified' AND NEW.status='expired')
                 ) THEN RAISE EXCEPTION 'invalid archive lifecycle transition' USING ERRCODE='23514';
-                ELSIF TG_TABLE_NAME='backup_snapshots' AND NOT (
-                    (OLD.status='requested' AND NEW.status IN ('running','failed','expired')) OR
-                    (OLD.status='running' AND NEW.status IN ('succeeded','failed','expired')) OR
-                    (OLD.status='succeeded' AND NEW.status='expired') OR
-                    (OLD.status='expired' AND NEW.status='deleted')
-                ) THEN RAISE EXCEPTION 'invalid backup lifecycle transition' USING ERRCODE='23514';
                 ELSIF TG_TABLE_NAME='restore_drills' AND NOT (
                     (OLD.status='pending' AND NEW.status IN ('running','cancelled')) OR
                     (OLD.status='running' AND NEW.status IN ('succeeded','failed','cancelled'))
