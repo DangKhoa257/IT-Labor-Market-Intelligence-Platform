@@ -15,6 +15,12 @@ connection string, query/fragment URI, password/token/secret assignment,
 revision is accepted only when metadata has the exact JSON boolean
 `{"allow_older_revision": true}`.
 
+The lifecycle is exact: `requested → running → succeeded → expired → deleted`,
+with `failed` reachable from requested or running. Requested has no timestamps;
+running has only `started_at`; succeeded/failed retain both timestamps. A
+verified backup may expire and be deleted only through the successful path, and
+all evidence other than `status` and `updated_at` remains immutable.
+
 Create a restore drill from a verified backup, execute the external restore,
 and record all eight mandatory checks: `alembic_revision`, `schema_inventory`,
 `row_count_baseline`, `foreign_key_constraints`, `api_contract`,

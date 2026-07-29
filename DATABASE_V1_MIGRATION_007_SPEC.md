@@ -263,6 +263,10 @@ finalization. Provider locations and key references must be non-secret: no
 PostgreSQL connection URI, credentials, JWT/key material, user-info, query, or
 fragment is permitted.
 
+Verified backup evidence is completely immutable. Its only permitted lifecycle
+updates are `succeeded → expired → deleted`; those updates may change only
+`status` and `updated_at` and preserve successful backup timestamps.
+
 ---
 
 # 7. `operations.partition_policies`
