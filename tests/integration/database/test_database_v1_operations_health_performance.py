@@ -204,7 +204,7 @@ def test_four_partial_indexes_have_exact_predicates(engine: sa.Engine) -> None:
             ),
             {"names": list(PARTIAL_INDEXES)},
         ).all()
-        rows: dict[str, str | None] = {str(row[0]): row[1] for row in result}
+        rows: dict[str, str] = {str(row[0]): str(row[1]) for row in result}
     assert set(rows) == PARTIAL_INDEXES
     assert "severity" in rows["ix_data_quality_issues__open_critical"]
     assert "status" in rows["ix_job_search_documents__active_posted"]
