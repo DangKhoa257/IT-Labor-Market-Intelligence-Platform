@@ -782,9 +782,9 @@ def _create_trigger_functions_and_triggers() -> None:
         SET search_path = pg_catalog, operations AS $$
         DECLARE trusted_finalizer BOOLEAN := current_user = (
             SELECT role.rolname
-            FROM pg_namespace AS namespace
-            JOIN pg_roles AS role ON role.oid = namespace.nspowner
-            WHERE namespace.nspname = 'operations'
+            FROM pg_proc AS function
+            JOIN pg_roles AS role ON role.oid = function.proowner
+            WHERE function.oid = 'operations.finalize_backup_snapshot_v1(uuid,text)'::regprocedure
         );
         BEGIN
             IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status
