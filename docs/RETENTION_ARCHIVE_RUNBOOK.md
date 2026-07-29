@@ -30,5 +30,11 @@ parent is terminal, every child mutation is rejected. After all authorized
 items are recorded as deleted, move the parent through `deleting` to its
 counter-consistent terminal outcome.
 
+If deletion fails, the worker may instead record `delete_authorized → failed`
+with a nonblank error message. This is equally evidence-preserving and final.
+Before a run can complete, PostgreSQL locks every item and verifies the terminal
+status and all parent counters against the actual deleted, skipped, and failed
+item evidence; authorized or unfinished items prevent completion.
+
 Use `operations.v_retention_readiness` to identify disabled, held, never-run,
 running, failed, or ready policies. Verified archive evidence is immutable.

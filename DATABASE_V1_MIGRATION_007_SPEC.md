@@ -259,6 +259,19 @@ may change only `status` and `updated_at`; target identity, timestamps, archive
 lineage, checksum, error evidence, and creation time remain immutable. A
 terminal parent makes every child mutation immutable.
 
+An authorized item may instead transition once to `failed` while its parent is
+authorized or deleting, provided it records a nonblank error message. This
+transition freezes the same identity, archive lineage, checksum, and creation
+evidence as deletion; no failed or deleted item can move again.
+
+Before a `deleting` retention run becomes terminal, PostgreSQL locks and counts
+its items. Parent counters must exactly match deleted, skipped, and failed
+items, and no candidate, archived, or authorized item may remain. `succeeded`
+requires no failures; `partially_succeeded` requires both deletions and
+failures; `failed` requires failures and no deletions. Archive-required runs
+report archived count as deleted plus failed items, while no-archive runs keep
+that count at zero.
+
 Execution identities freeze when a run starts or its child evidence begins.
 Archive manifests, backup evidence, restore drills, health checks, and
 maintenance runs preserve their defining identity through processing and

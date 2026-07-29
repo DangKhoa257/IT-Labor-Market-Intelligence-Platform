@@ -798,6 +798,10 @@ def _create_trigger_functions_and_triggers() -> None:
             JOIN pg_roles AS role ON role.oid = function.proowner
             WHERE function.oid = 'operations.finalize_backup_snapshot_v1(uuid,text)'::regprocedure
         );
+        item_count BIGINT; candidate_item_count BIGINT; archived_item_count BIGINT;
+        skipped_item_count BIGINT; failed_item_count BIGINT;
+        authorized_item_count BIGINT; deleted_item_count BIGINT;
+        requires_archive BOOLEAN;
         BEGIN
             IF TG_OP = 'UPDATE' AND TG_TABLE_NAME <> 'backup_snapshots'
                AND NEW.status IS DISTINCT FROM OLD.status
@@ -858,6 +862,45 @@ def _create_trigger_functions_and_triggers() -> None:
             END IF;
 
             IF TG_OP='UPDATE' THEN
+                IF TG_TABLE_NAME='retention_runs' AND OLD.status='deleting'
+                   AND NEW.status IN ('succeeded','partially_succeeded','failed') THEN
+                    PERFORM 1 FROM operations.retention_run_items
+                     WHERE retention_run_id=OLD.id FOR UPDATE;
+                    SELECT count(*),
+                           count(*) FILTER (WHERE status='candidate'),
+                           count(*) FILTER (WHERE status='archived'),
+                           count(*) FILTER (WHERE status='skipped'),
+                           count(*) FILTER (WHERE status='failed'),
+                           count(*) FILTER (WHERE status='delete_authorized'),
+                           count(*) FILTER (WHERE status='deleted')
+                      INTO item_count, candidate_item_count, archived_item_count,
+                           skipped_item_count, failed_item_count,
+                           authorized_item_count, deleted_item_count
+                      FROM operations.retention_run_items WHERE retention_run_id=OLD.id;
+                    SELECT policy.requires_archive INTO requires_archive
+                      FROM operations.retention_policies AS policy WHERE policy.id=OLD.policy_id;
+                    IF item_count != NEW.candidate_count
+                       OR NEW.deleted_count != deleted_item_count
+                       OR NEW.skipped_count != skipped_item_count
+                       OR NEW.failed_count != failed_item_count
+                       OR candidate_item_count != 0 OR archived_item_count != 0
+                       OR authorized_item_count != 0
+                       OR (requires_archive AND NEW.archived_count != deleted_item_count + failed_item_count)
+                       OR (NOT requires_archive AND NEW.archived_count != 0)
+                       OR (NEW.status='succeeded' AND NOT (
+                              failed_item_count=0
+                              AND deleted_item_count + skipped_item_count=NEW.candidate_count))
+                       OR (NEW.status='partially_succeeded' AND NOT (
+                              deleted_item_count>0 AND failed_item_count>0
+                              AND deleted_item_count + failed_item_count + skipped_item_count
+                                  =NEW.candidate_count))
+                       OR (NEW.status='failed' AND NOT (
+                              deleted_item_count=0 AND failed_item_count>0
+                              AND failed_item_count + skipped_item_count=NEW.candidate_count)) THEN
+                        RAISE EXCEPTION 'retention terminal counters do not match item evidence'
+                            USING ERRCODE='23514';
+                    END IF;
+                END IF;
                 IF TG_TABLE_NAME='retention_runs' THEN
                     IF (OLD.status<>'pending' OR EXISTS (
                         SELECT 1 FROM operations.retention_run_items WHERE retention_run_id=OLD.id
@@ -970,14 +1013,19 @@ def _create_trigger_functions_and_triggers() -> None:
                     IF TG_OP!='UPDATE' THEN
                         RAISE EXCEPTION 'only evidence-preserving authorized deletion is allowed'
                             USING ERRCODE='23514';
-                    ELSIF OLD.status!='delete_authorized' OR NEW.status!='deleted'
+                    ELSIF OLD.status!='delete_authorized'
+                          OR NEW.status NOT IN ('deleted','failed')
                           OR NEW.retention_run_id IS DISTINCT FROM OLD.retention_run_id
                           OR NEW.target_record_key IS DISTINCT FROM OLD.target_record_key
                           OR NEW.record_timestamp IS DISTINCT FROM OLD.record_timestamp
                           OR NEW.archive_object_id IS DISTINCT FROM OLD.archive_object_id
                           OR NEW.record_sha256 IS DISTINCT FROM OLD.record_sha256
-                          OR NEW.error_message IS DISTINCT FROM OLD.error_message
-                          OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+                          OR NEW.created_at IS DISTINCT FROM OLD.created_at
+                          OR (NEW.status='deleted'
+                              AND NEW.error_message IS DISTINCT FROM OLD.error_message)
+                          OR (NEW.status='failed'
+                              AND (NEW.error_message IS NULL
+                                   OR length(trim(NEW.error_message))=0)) THEN
                         RAISE EXCEPTION 'only evidence-preserving authorized deletion is allowed'
                             USING ERRCODE='23514';
                     END IF;
@@ -1004,7 +1052,8 @@ def _create_trigger_functions_and_triggers() -> None:
                         RAISE EXCEPTION 'invalid archived retention-item transition'
                             USING ERRCODE='23514';
                     ELSIF OLD.status='delete_authorized' AND NOT (
-                        NEW.status='deleted' AND parent_status IN ('delete_authorized','deleting')
+                        NEW.status IN ('deleted','failed')
+                        AND parent_status IN ('delete_authorized','deleting')
                     ) THEN
                         RAISE EXCEPTION 'invalid authorized retention-item transition'
                             USING ERRCODE='23514';

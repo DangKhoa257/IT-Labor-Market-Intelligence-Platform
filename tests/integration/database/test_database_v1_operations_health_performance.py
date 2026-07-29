@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -205,8 +206,14 @@ def test_four_partial_indexes_have_exact_predicates(engine: sa.Engine) -> None:
             {"names": list(PARTIAL_INDEXES)},
         ).all()
         rows: dict[str, str] = {str(row[0]): str(row[1]) for row in result}
-    assert set(rows) == PARTIAL_INDEXES
-    assert "severity" in rows["ix_data_quality_issues__open_critical"]
-    assert "status" in rows["ix_job_search_documents__active_posted"]
-    assert "running" in rows["ix_analytics_refresh_runs__running"]
-    assert "running" in rows["ix_serving_refresh_runs__running"]
+    normalized = {
+        name: re.sub(r"[\s()\"]", "", predicate).lower() for name, predicate in rows.items()
+    }
+    assert normalized == {
+        "ix_data_quality_issues__open_critical": (
+            "statusin('open','acknowledged')andseverityin('error','critical')"
+        ),
+        "ix_job_search_documents__active_posted": "status='active'",
+        "ix_analytics_refresh_runs__running": "status='running'",
+        "ix_serving_refresh_runs__running": "status='running'",
+    }

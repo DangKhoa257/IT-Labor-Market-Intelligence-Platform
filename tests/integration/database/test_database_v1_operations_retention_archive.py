@@ -78,6 +78,52 @@ def _authorized_run(connection: sa.Connection, item_count: int = 1) -> tuple[UUI
     return run, ids
 
 
+def _running_no_archive_run(connection: sa.Connection, item_count: int) -> tuple[UUID, list[int]]:
+    policy = cast(
+        UUID,
+        connection.scalar(
+            sa.text(
+                """INSERT INTO operations.retention_policies
+                (policy_code,target_schema,target_table,record_class,time_column,
+                 delete_after_days,requires_archive,enabled,policy_version,created_by,
+                 approved_by,approved_at)
+                VALUES ('matrix-no-archive','history','job_observations','other','observed_at',
+                        30,false,true,'v1','test','reviewer',now())
+                ON CONFLICT (policy_code) DO UPDATE SET updated_at=now() RETURNING id"""
+            )
+        ),
+    )
+    run = cast(
+        UUID,
+        connection.scalar(
+            sa.text(
+                """INSERT INTO operations.retention_runs
+                (policy_id,status,dry_run,cutoff_at,candidate_count,requested_by,started_at)
+                VALUES (:policy,'running',false,now(),:count,'test',now()) RETURNING id"""
+            ),
+            {"policy": policy, "count": item_count},
+        ),
+    )
+    items = list(
+        connection.scalars(
+            sa.text(
+                """INSERT INTO operations.retention_run_items
+                (retention_run_id,target_record_key,record_timestamp)
+                SELECT :run,'terminal-' || value,now() FROM generate_series(1,:count) AS value
+                RETURNING id"""
+            ),
+            {"run": run, "count": item_count},
+        )
+    )
+    return run, items
+
+
+def _authorize(connection: sa.Connection, run: UUID) -> None:
+    connection.execute(
+        sa.text("SELECT operations.authorize_retention_delete_v1(:run,'reviewer')"), {"run": run}
+    )
+
+
 def test_authorized_item_can_be_deleted_and_parent_can_succeed(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         run, items = _authorized_run(connection)
@@ -105,6 +151,150 @@ def test_authorized_item_can_be_deleted_while_parent_is_deleting(engine: sa.Engi
             sa.text("UPDATE operations.retention_runs SET status='deleting' WHERE id=:run"),
             {"run": run},
         )
+        connection.execute(
+            sa.text("UPDATE operations.retention_run_items SET status='deleted' WHERE id=:id"),
+            {"id": items[0]},
+        )
+
+
+def test_retention_completion_accepts_skipped_partial_and_failed_outcomes(
+    engine: sa.Engine,
+) -> None:
+    with engine.begin() as connection:
+        skipped_run, skipped_items = _running_no_archive_run(connection, 2)
+        connection.execute(
+            sa.text("UPDATE operations.retention_run_items SET status='skipped' WHERE id=:id"),
+            {"id": skipped_items[1]},
+        )
+        connection.execute(
+            sa.text("UPDATE operations.retention_runs SET skipped_count=1 WHERE id=:run"),
+            {"run": skipped_run},
+        )
+        _authorize(connection, skipped_run)
+        connection.execute(
+            sa.text("UPDATE operations.retention_run_items SET status='deleted' WHERE id=:id"),
+            {"id": skipped_items[0]},
+        )
+        connection.execute(
+            sa.text("UPDATE operations.retention_runs SET status='deleting' WHERE id=:run"),
+            {"run": skipped_run},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_runs
+                SET status='succeeded',deleted_count=1,skipped_count=1,finished_at=now()
+                WHERE id=:run"""
+            ),
+            {"run": skipped_run},
+        )
+
+        partial_run, partial_items = _running_no_archive_run(connection, 2)
+        _authorize(connection, partial_run)
+        connection.execute(
+            sa.text("UPDATE operations.retention_run_items SET status='deleted' WHERE id=:id"),
+            {"id": partial_items[0]},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_run_items
+                SET status='failed',error_message='deletion failed' WHERE id=:id"""
+            ),
+            {"id": partial_items[1]},
+        )
+        connection.execute(
+            sa.text("UPDATE operations.retention_runs SET status='deleting' WHERE id=:run"),
+            {"run": partial_run},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_runs
+                SET status='partially_succeeded',deleted_count=1,failed_count=1,finished_at=now()
+                WHERE id=:run"""
+            ),
+            {"run": partial_run},
+        )
+
+        failed_run, failed_items = _running_no_archive_run(connection, 1)
+        _authorize(connection, failed_run)
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_run_items
+                SET status='failed',error_message='deletion failed' WHERE id=:id"""
+            ),
+            {"id": failed_items[0]},
+        )
+        connection.execute(
+            sa.text("UPDATE operations.retention_runs SET status='deleting' WHERE id=:run"),
+            {"run": failed_run},
+        )
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_runs
+                SET status='failed',failed_count=1,finished_at=now() WHERE id=:run"""
+            ),
+            {"run": failed_run},
+        )
+
+
+def test_retention_completion_rejects_falsified_or_unfinished_item_evidence(
+    engine: sa.Engine,
+) -> None:
+    with engine.begin() as connection:
+        run, items = _running_no_archive_run(connection, 1)
+        _authorize(connection, run)
+        connection.execute(
+            sa.text("UPDATE operations.retention_runs SET status='deleting' WHERE id=:run"),
+            {"run": run},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_runs
+                SET status='succeeded',deleted_count=1,finished_at=now() WHERE id=:run"""
+            ),
+            {"run": run},
+        )
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE operations.retention_run_items SET status='deleted' WHERE id=:id"),
+            {"id": items[0]},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_runs
+                SET status='succeeded',deleted_count=0,finished_at=now() WHERE id=:run"""
+            ),
+            {"run": run},
+        )
+
+
+def test_authorized_deletion_failure_requires_error_and_freezes_identity(engine: sa.Engine) -> None:
+    with engine.begin() as connection:
+        run, items = _authorized_run(connection)
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE operations.retention_run_items SET status='failed' WHERE id=:id"),
+            {"id": items[0]},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_run_items
+                SET status='failed',target_record_key='changed',error_message='failed'
+                WHERE id=:id"""
+            ),
+            {"id": items[0]},
+        )
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """UPDATE operations.retention_run_items
+                SET status='failed',error_message='failed' WHERE id=:id"""
+            ),
+            {"id": items[0]},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
         connection.execute(
             sa.text("UPDATE operations.retention_run_items SET status='deleted' WHERE id=:id"),
             {"id": items[0]},
