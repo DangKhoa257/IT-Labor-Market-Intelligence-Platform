@@ -29,8 +29,12 @@ append-only tables and adds seven BRIN plus four partial indexes. It does not
 physically partition a relation; an optional Migration 008 can implement a
 separately approved plan.
 
-Evidence is finalized through the supplied functions. Their row locks and
-trigger guards make archive-object mutation versus manifest finalization,
+Evidence is finalized through the supplied functions. Finalizer-only states use
+the trusted `SECURITY DEFINER` function-owner context; the lifecycle triggers
+are not `SECURITY DEFINER` and compare it with the operations schema owner. A
+custom GUC is never an authorization signal. The migration owner is an
+administrative principal and must not be granted to operational clients. Their
+row locks and trigger guards make archive-object mutation versus manifest finalization,
 restore-check mutation versus drill finalization, and retention authorization
 versus legal holds safe under concurrent transactions. Use bounded lock and
 statement timeouts in operational clients.

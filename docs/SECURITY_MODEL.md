@@ -12,6 +12,13 @@ schemas; enables RLS with no policies on every operations table; and hardens
 default privileges. `service_role` is the only role granted operations access,
 including only the six exact operational function signatures.
 
+Finalizer-only state transitions are not controlled by a user-settable custom
+GUC. The six finalizers run under their trusted function-owner context;
+ordinary lifecycle triggers compare that context to the `operations` schema
+owner. `service_role` cannot reproduce it with `SET`, `set_config`, or direct
+DML. The migration owner is administrative by design and must remain tightly
+controlled.
+
 Do not store credentials, access keys, or secret-like values in operations
 metadata, storage URIs, encryption references, manifests, checks, or logs.
 Use a secret manager and store a non-secret reference only. Verify the baseline

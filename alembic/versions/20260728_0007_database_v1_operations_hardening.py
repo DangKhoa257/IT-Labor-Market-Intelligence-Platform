@@ -786,7 +786,8 @@ def _create_trigger_functions_and_triggers() -> None:
             WHERE namespace.nspname = 'operations'
         );
         BEGIN
-            IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+            IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status
+               AND NOT trusted_finalizer THEN
                 IF TG_TABLE_NAME = 'retention_runs' AND NOT (
                     (OLD.status='pending' AND NEW.status IN ('running','cancelled')) OR
                     (OLD.status='running' AND NEW.status IN

@@ -244,6 +244,11 @@ Finalization functions must:
 4. update the parent in one transaction;
 5. prevent later evidence mutation that would invalidate the result.
 
+Finalizer-only transitions use the trusted `SECURITY DEFINER` function-owner
+execution context, observed by non-`SECURITY DEFINER` lifecycle triggers.
+Custom GUC values are not an authorization boundary. The migration/schema owner
+is an administrative principal and is explicitly trusted for migration work.
+
 ---
 
 # 7. `operations.partition_policies`
