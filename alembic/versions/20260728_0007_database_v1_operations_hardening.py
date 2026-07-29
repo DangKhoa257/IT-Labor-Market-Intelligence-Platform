@@ -787,7 +787,8 @@ def _create_trigger_functions_and_triggers() -> None:
             WHERE function.oid = 'operations.finalize_backup_snapshot_v1(uuid,text)'::regprocedure
         );
         BEGIN
-            IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status
+            IF TG_OP = 'UPDATE' AND TG_TABLE_NAME <> 'backup_snapshots'
+               AND NEW.status IS DISTINCT FROM OLD.status
                AND NOT trusted_finalizer THEN
                 IF TG_TABLE_NAME = 'retention_runs' AND NOT (
                     (OLD.status='pending' AND NEW.status IN ('running','cancelled')) OR
@@ -828,6 +829,25 @@ def _create_trigger_functions_and_triggers() -> None:
                     (OLD.status='running' AND NEW.status IN
                         ('passed','passed_with_warnings','failed','cancelled'))
                 ) THEN RAISE EXCEPTION 'invalid health lifecycle transition' USING ERRCODE='23514';
+            END IF;
+
+            IF TG_OP='UPDATE' AND TG_TABLE_NAME='backup_snapshots' THEN
+                IF NEW.verification_status IS NOT DISTINCT FROM OLD.verification_status
+                   AND NEW.status IS DISTINCT FROM OLD.status
+                   AND NOT trusted_finalizer
+                   AND NOT (
+                       (OLD.status='requested' AND NEW.status IN ('running','failed','expired')) OR
+                       (OLD.status='running' AND NEW.status IN ('succeeded','failed','expired')) OR
+                       (OLD.status='succeeded' AND NEW.status='expired') OR
+                       (OLD.status='expired' AND NEW.status='deleted')
+                   ) THEN
+                    RAISE EXCEPTION 'invalid backup lifecycle transition (trusted %, current %, owner %)',
+                        trusted_finalizer, current_user, (
+                            SELECT role.rolname FROM pg_proc AS function
+                            JOIN pg_roles AS role ON role.oid=function.proowner
+                            WHERE function.oid='operations.finalize_backup_snapshot_v1(uuid,text)'::regprocedure
+                        ) USING ERRCODE='23514';
+                END IF;
             END IF;
 
             IF TG_TABLE_NAME = 'retention_runs' THEN
