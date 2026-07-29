@@ -16,5 +16,11 @@ unverified archive evidence, and invalid states, then marks the run/items
 `delete_authorized`. It never deletes an application row. A separately reviewed
 and audited physical-deletion implementation remains out of scope.
 
+For archive-required policies, eligible records must be `archived` against the
+single verified manifest; skipped records stay skipped. For no-archive policies,
+eligible candidates are authorized directly and skipped records still remain
+unchanged. Do not pre-set `delete_authorized`: PostgreSQL permits that state only
+inside the trusted finalizer.
+
 Use `operations.v_retention_readiness` to identify disabled, held, never-run,
 running, failed, or ready policies. Verified archive evidence is immutable.

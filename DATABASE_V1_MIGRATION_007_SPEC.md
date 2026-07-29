@@ -249,6 +249,20 @@ execution context, observed by non-`SECURITY DEFINER` lifecycle triggers.
 Custom GUC values are not an authorization boundary. The migration/schema owner
 is an administrative principal and is explicitly trusted for migration work.
 
+Retention-item transitions are forward-only. Archive-required items progress
+from `candidate` to `archived`, `skipped`, or `failed`, and only the retention
+authorization function can move an archived item to `delete_authorized`.
+No-archive candidates may instead be authorized by that function. Skipped and
+failed items remain unchanged; an authorized item can become `deleted` only
+while its parent run is authorized or deleting.
+
+Execution identities freeze when a run starts or its child evidence begins.
+Archive manifests, backup evidence, restore drills, health checks, and
+maintenance runs preserve their defining identity through processing and
+finalization. Provider locations and key references must be non-secret: no
+PostgreSQL connection URI, credentials, JWT/key material, user-info, query, or
+fragment is permitted.
+
 ---
 
 # 7. `operations.partition_policies`

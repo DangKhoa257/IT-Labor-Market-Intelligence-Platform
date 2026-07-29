@@ -150,7 +150,10 @@ def _create_archive_tables() -> None:
             CONSTRAINT ck_archive_manifests__compression CHECK
                 (compression IN ('none','gzip','zstd','snappy')),
             CONSTRAINT ck_archive_manifests__uri CHECK
-                (manifest_uri !~ '[?@]' AND manifest_uri !~* '(password|token|secret|key)='),
+                (manifest_uri !~ '[?#@]'
+                 AND manifest_uri !~* 'postgres(ql)?://'
+                 AND manifest_uri !~* '(password|token|secret|key)[[:space:]]*='
+                 AND manifest_uri !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)'),
             CONSTRAINT ck_archive_manifests__counts CHECK
                 (object_count >= 0 AND row_count >= 0 AND byte_count >= 0),
             CONSTRAINT ck_archive_manifests__bounds CHECK
@@ -208,7 +211,9 @@ def _create_archive_tables() -> None:
             CONSTRAINT ck_archive_objects__text CHECK
                 (length(trim(storage_uri)) > 0 AND length(trim(content_type)) > 0),
             CONSTRAINT ck_archive_objects__uri CHECK
-                (storage_uri !~ '[?@]' AND storage_uri !~* '(password|token|secret|key)='),
+                (storage_uri !~ '[?#@]' AND storage_uri !~* 'postgres(ql)?://'
+                 AND storage_uri !~* '(password|token|secret|key)[[:space:]]*='
+                 AND storage_uri !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)'),
             CONSTRAINT ck_archive_objects__compression CHECK
                 (compression IN ('none','gzip','zstd','snappy')),
             CONSTRAINT ck_archive_objects__status CHECK
@@ -288,7 +293,8 @@ def _create_backup_restore_tables() -> None:
             CONSTRAINT ck_backup_snapshots__uri CHECK
                 (storage_uri IS NULL OR
                  (storage_uri !~ '[?#@]'
-                  AND storage_uri !~* '(postgres(ql)?://|password|token|secret|key)='
+                  AND storage_uri !~* 'postgres(ql)?://'
+                  AND storage_uri !~* '(password|token|secret|key)[[:space:]]*='
                   AND storage_uri !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)')),
             CONSTRAINT ck_backup_snapshots__json CHECK
                 (jsonb_typeof(metadata_json) = 'object'),
@@ -297,7 +303,8 @@ def _create_backup_restore_tables() -> None:
                  (encryption_method IS NOT NULL AND length(trim(encryption_method)) > 0)),
             CONSTRAINT ck_backup_snapshots__key_reference CHECK
                 (encryption_key_reference IS NULL OR
-                 (encryption_key_reference !~* '(postgres(ql)?://|password|token|secret|key)='
+                 (encryption_key_reference !~* 'postgres(ql)?://'
+                  AND encryption_key_reference !~* '(password|token|secret|key)[[:space:]]*='
                   AND encryption_key_reference !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)'
                   AND encryption_key_reference !~ '[?#@]')),
             CONSTRAINT ck_backup_snapshots__succeeded CHECK
@@ -568,8 +575,10 @@ def _create_maintenance_health_tables() -> None:
             CONSTRAINT ck_maintenance_runs__json CHECK (jsonb_typeof(metrics_json) = 'object'),
             CONSTRAINT ck_maintenance_runs__reference CHECK
                 (external_job_reference IS NULL OR
-                 (external_job_reference !~ '[?@]'
-                  AND external_job_reference !~* '(password|token|secret)=')),
+                 (external_job_reference !~ '[?#@]'
+                  AND external_job_reference !~* 'postgres(ql)?://'
+                  AND external_job_reference !~* '(password|token|secret|key)[[:space:]]*='
+                  AND external_job_reference !~* '(^|[^a-z0-9])(sk-|eyJ|-----BEGIN)')),
             CONSTRAINT ck_maintenance_runs__failure CHECK
                 (status != 'failed' OR
                  (error_message IS NOT NULL AND length(trim(error_message)) > 0)),
@@ -844,6 +853,54 @@ def _create_trigger_functions_and_triggers() -> None:
                 END IF;
             END IF;
 
+            IF TG_OP='UPDATE' THEN
+                IF TG_TABLE_NAME='retention_runs' AND (
+                    OLD.status<>'pending' OR EXISTS (
+                        SELECT 1 FROM operations.retention_run_items WHERE retention_run_id=OLD.id
+                    ) OR EXISTS (
+                        SELECT 1 FROM operations.archive_manifests WHERE retention_run_id=OLD.id
+                    )
+                ) AND (NEW.policy_id IS DISTINCT FROM OLD.policy_id
+                         OR NEW.cutoff_at IS DISTINCT FROM OLD.cutoff_at
+                         OR NEW.dry_run IS DISTINCT FROM OLD.dry_run) THEN
+                    RAISE EXCEPTION 'retention run execution identity is immutable' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='backup_snapshots' AND OLD.status<>'requested'
+                   AND (NEW.provider IS DISTINCT FROM OLD.provider
+                        OR NEW.provider_snapshot_id IS DISTINCT FROM OLD.provider_snapshot_id
+                        OR NEW.backup_type IS DISTINCT FROM OLD.backup_type
+                        OR NEW.database_identifier IS DISTINCT FROM OLD.database_identifier
+                        OR NEW.postgres_version IS DISTINCT FROM OLD.postgres_version
+                        OR NEW.alembic_revision IS DISTINCT FROM OLD.alembic_revision) THEN
+                    RAISE EXCEPTION 'backup execution identity is immutable' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='restore_drills' AND (
+                    OLD.status<>'pending' OR EXISTS (
+                        SELECT 1 FROM operations.restore_drill_checks WHERE restore_drill_id=OLD.id
+                    )
+                ) AND (NEW.backup_snapshot_id IS DISTINCT FROM OLD.backup_snapshot_id
+                         OR NEW.environment_name IS DISTINCT FROM OLD.environment_name
+                         OR NEW.target_alembic_revision IS DISTINCT FROM OLD.target_alembic_revision
+                         OR NEW.initiated_by IS DISTINCT FROM OLD.initiated_by
+                         OR NEW.rto_target_seconds IS DISTINCT FROM OLD.rto_target_seconds
+                         OR NEW.rpo_target_seconds IS DISTINCT FROM OLD.rpo_target_seconds) THEN
+                    RAISE EXCEPTION 'restore drill execution identity is immutable' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='health_check_runs' AND (
+                    OLD.status<>'pending' OR EXISTS (
+                        SELECT 1 FROM operations.health_check_results WHERE health_check_run_id=OLD.id
+                    )
+                ) AND (NEW.suite_version IS DISTINCT FROM OLD.suite_version
+                         OR NEW.environment_name IS DISTINCT FROM OLD.environment_name
+                         OR NEW.scope IS DISTINCT FROM OLD.scope) THEN
+                    RAISE EXCEPTION 'health check identity is immutable' USING ERRCODE='23514';
+                ELSIF TG_TABLE_NAME='maintenance_runs' AND OLD.status<>'pending'
+                   AND (NEW.run_type IS DISTINCT FROM OLD.run_type
+                        OR NEW.target_schema IS DISTINCT FROM OLD.target_schema
+                        OR NEW.target_table IS DISTINCT FROM OLD.target_table
+                        OR NEW.dry_run IS DISTINCT FROM OLD.dry_run
+                        OR NEW.requested_by IS DISTINCT FROM OLD.requested_by) THEN
+                    RAISE EXCEPTION 'maintenance execution identity is immutable' USING ERRCODE='23514';
+                END IF;
+            END IF;
+
             IF TG_TABLE_NAME = 'retention_runs' THEN
                 IF NEW.status='delete_authorized' AND NOT trusted_finalizer THEN
                     RAISE EXCEPTION 'retention authorization requires finalizer' USING ERRCODE='23514';
@@ -882,7 +939,12 @@ def _create_trigger_functions_and_triggers() -> None:
         CREATE FUNCTION operations.protect_finalized_operational_record()
         RETURNS trigger LANGUAGE plpgsql
         SET search_path = pg_catalog, operations AS $$
-        DECLARE parent_status TEXT;
+        DECLARE parent_status TEXT; requires_archive BOOLEAN;
+                trusted_finalizer BOOLEAN := current_user = (
+                    SELECT role.rolname FROM pg_proc AS function
+                    JOIN pg_roles AS role ON role.oid=function.proowner
+                    WHERE function.oid='operations.finalize_backup_snapshot_v1(uuid,text)'::regprocedure
+                );
         BEGIN
             IF TG_TABLE_NAME = 'retention_run_items' THEN
                 IF TG_OP='DELETE' THEN
@@ -896,6 +958,38 @@ def _create_trigger_functions_and_triggers() -> None:
                                      'partially_succeeded','failed','cancelled') THEN
                     RAISE EXCEPTION 'retention items are immutable after authorization'
                         USING ERRCODE='23514';
+                END IF;
+                SELECT policy.requires_archive INTO requires_archive
+                  FROM operations.retention_runs AS run
+                  JOIN operations.retention_policies AS policy ON policy.id=run.policy_id
+                 WHERE run.id=CASE WHEN TG_OP='DELETE' THEN OLD.retention_run_id
+                                   ELSE NEW.retention_run_id END;
+                IF TG_OP='INSERT' AND NEW.status!='candidate' THEN
+                    RAISE EXCEPTION 'retention items begin as candidates' USING ERRCODE='23514';
+                ELSIF TG_OP='UPDATE' THEN
+                    IF OLD.status='candidate' AND NOT (
+                        NEW.status IN ('skipped','failed')
+                        OR (requires_archive AND NEW.status='archived')
+                        OR (NOT requires_archive AND NEW.status='delete_authorized'
+                            AND trusted_finalizer)
+                    ) THEN
+                        RAISE EXCEPTION 'invalid candidate retention-item transition'
+                            USING ERRCODE='23514';
+                    ELSIF OLD.status='archived' AND NOT (
+                        NEW.status='delete_authorized' AND trusted_finalizer
+                    ) THEN
+                        RAISE EXCEPTION 'invalid archived retention-item transition'
+                            USING ERRCODE='23514';
+                    ELSIF OLD.status='delete_authorized' AND NOT (
+                        NEW.status='deleted' AND parent_status IN ('delete_authorized','deleting')
+                    ) THEN
+                        RAISE EXCEPTION 'invalid authorized retention-item transition'
+                            USING ERRCODE='23514';
+                    ELSIF OLD.status IN ('skipped','failed','deleted')
+                       AND NEW.status IS DISTINCT FROM OLD.status THEN
+                        RAISE EXCEPTION 'retention-item terminal status is immutable'
+                            USING ERRCODE='23514';
+                    END IF;
                 END IF;
                 IF TG_OP='UPDATE' AND OLD.status='deleted' AND NEW.status!='deleted' THEN
                     RAISE EXCEPTION 'deleted retention evidence is irreversible'
@@ -939,6 +1033,20 @@ def _create_trigger_functions_and_triggers() -> None:
                         USING ERRCODE='23514';
                 END IF;
             ELSIF TG_TABLE_NAME = 'archive_manifests' THEN
+                IF TG_OP='UPDATE' AND (OLD.status<>'pending' OR EXISTS (
+                    SELECT 1 FROM operations.archive_objects WHERE archive_manifest_id=OLD.id
+                )) AND (NEW.retention_run_id IS DISTINCT FROM OLD.retention_run_id
+                           OR NEW.target_schema IS DISTINCT FROM OLD.target_schema
+                           OR NEW.target_table IS DISTINCT FROM OLD.target_table
+                           OR NEW.archive_format IS DISTINCT FROM OLD.archive_format
+                           OR NEW.storage_provider IS DISTINCT FROM OLD.storage_provider
+                           OR NEW.manifest_uri IS DISTINCT FROM OLD.manifest_uri
+                           OR NEW.schema_revision IS DISTINCT FROM OLD.schema_revision
+                           OR NEW.compression IS DISTINCT FROM OLD.compression
+                           OR NEW.encryption_method IS DISTINCT FROM OLD.encryption_method
+                           OR NEW.encryption_key_reference IS DISTINCT FROM OLD.encryption_key_reference) THEN
+                    RAISE EXCEPTION 'archive manifest identity is immutable' USING ERRCODE='23514';
+                END IF;
                 IF OLD.status='verified' THEN
                     RAISE EXCEPTION 'verified archive manifest is immutable' USING ERRCODE='23514';
                 END IF;
@@ -1290,7 +1398,8 @@ def _create_callable_functions() -> None:
                 policy operations.retention_policies%ROWTYPE;
                 manifest operations.archive_manifests%ROWTYPE;
                 item_count BIGINT; archived_count BIGINT; skipped_count BIGINT;
-                failed_count BIGINT; manifest_count BIGINT;
+                failed_count BIGINT; authorized_count BIGINT; deleted_count BIGINT;
+                candidate_item_count BIGINT; manifest_count BIGINT;
         BEGIN
             IF p_authorized_by IS NULL OR length(trim(p_authorized_by))=0 THEN
                 RAISE EXCEPTION 'authorization actor is required' USING ERRCODE='23514';
@@ -1308,16 +1417,20 @@ def _create_callable_functions() -> None:
                 RAISE EXCEPTION 'retention run is not delete-authorizable'
                     USING ERRCODE='23514';
             END IF;
-            SELECT count(*), count(*) FILTER (WHERE status='archived'),
+            SELECT count(*), count(*) FILTER (WHERE status='candidate'),
+                   count(*) FILTER (WHERE status='archived'),
                    count(*) FILTER (WHERE status='skipped'),
-                   count(*) FILTER (WHERE status='failed')
-              INTO item_count, archived_count, skipped_count, failed_count
+                   count(*) FILTER (WHERE status='failed'),
+                   count(*) FILTER (WHERE status='delete_authorized'),
+                   count(*) FILTER (WHERE status='deleted')
+              INTO item_count, candidate_item_count, archived_count, skipped_count,
+                   failed_count, authorized_count, deleted_count
               FROM operations.retention_run_items WHERE retention_run_id=run.id;
             IF item_count != run.candidate_count
                OR archived_count != run.archived_count
                OR skipped_count != run.skipped_count
                OR failed_count != run.failed_count
-               OR failed_count != 0 THEN
+               OR failed_count != 0 OR authorized_count != 0 OR deleted_count != 0 THEN
                 RAISE EXCEPTION 'retention counters do not match item evidence' USING ERRCODE='23514';
             END IF;
             IF policy.requires_archive THEN
@@ -1345,6 +1458,8 @@ def _create_callable_functions() -> None:
                     RAISE EXCEPTION 'verified archive evidence is incomplete'
                         USING ERRCODE='23514';
                 END IF;
+            ELSIF archived_count != 0 OR candidate_item_count + skipped_count != item_count THEN
+                RAISE EXCEPTION 'no-archive retention evidence is incomplete' USING ERRCODE='23514';
             END IF;
             UPDATE operations.retention_run_items SET status='delete_authorized', updated_at=now()
              WHERE retention_run_id=run.id
