@@ -68,14 +68,14 @@ def test_health_finalizer_calculates_outcome(
             sa.text(
                 """INSERT INTO operations.health_check_results
                 (health_check_run_id,check_code,category,severity,status,message)
-                VALUES (:run,:code,'security',:severity,:status,
-                        CASE WHEN :status='failed' THEN 'failure' END)"""
+                VALUES (:run,:code,'security',:severity,:status,:message)"""
             ),
             {
                 "run": run,
                 "code": f"check-{result_status}",
                 "severity": severity,
                 "status": result_status,
+                "message": "failure" if result_status == "failed" else None,
             },
         )
         connection.execute(

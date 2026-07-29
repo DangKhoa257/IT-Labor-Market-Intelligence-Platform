@@ -342,7 +342,9 @@ def test_downgrade_and_reupgrade_preserve_prior_api(engine: sa.Engine) -> None:
             api_rows = connection.execute(
                 sa.text(
                     """SELECT function.prosecdef,function.provolatile,function.proconfig,
-                              has_function_privilege('PUBLIC',function.oid,'EXECUTE'),
+                              EXISTS (SELECT 1 FROM aclexplode(COALESCE(
+                                function.proacl,acldefault('f',function.proowner))) acl
+                                WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'),
                               has_function_privilege('anon',function.oid,'EXECUTE'),
                               has_function_privilege('authenticated',function.oid,'EXECUTE'),
                               has_function_privilege('service_role',function.oid,'EXECUTE')
@@ -355,7 +357,21 @@ def test_downgrade_and_reupgrade_preserve_prior_api(engine: sa.Engine) -> None:
             assert all(row[0] and row[1] == "s" for row in api_rows)
             assert all(row[2] == ["search_path=pg_catalog, api, serving"] for row in api_rows)
             assert all(not row[3] and row[4] and row[5] and row[6] for row in api_rows)
-            for role in ("PUBLIC", "anon", "authenticated"):
+            public_history_usage = connection.execute(
+                sa.text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM aclexplode(COALESCE(n.nspacl, acldefault('n', n.nspowner))) acl
+                        WHERE acl.grantee = 0 AND acl.privilege_type = 'USAGE'
+                    )
+                    FROM pg_namespace n
+                    WHERE n.nspname = 'history'
+                    """
+                )
+            ).scalar_one()
+            assert public_history_usage is False
+            for role in ("anon", "authenticated"):
                 assert not connection.scalar(
                     sa.text("SELECT has_schema_privilege(:role,'history','USAGE')"),
                     {"role": role},

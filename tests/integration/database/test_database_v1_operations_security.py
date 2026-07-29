@@ -46,7 +46,9 @@ def test_api_function_security_and_exact_client_grants(engine: sa.Engine) -> Non
             sa.text(
                 """SELECT function.proname,function.prosecdef,
                           function.provolatile,function.proconfig,
-                          has_function_privilege('PUBLIC',function.oid,'EXECUTE'),
+                          EXISTS (SELECT 1 FROM aclexplode(COALESCE(
+                            function.proacl,acldefault('f',function.proowner))) acl
+                            WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'),
                           has_function_privilege('anon',function.oid,'EXECUTE'),
                           has_function_privilege('authenticated',function.oid,'EXECUTE'),
                           has_function_privilege('service_role',function.oid,'EXECUTE')
@@ -62,12 +64,20 @@ def test_api_function_security_and_exact_client_grants(engine: sa.Engine) -> Non
 
 def test_public_and_clients_cannot_access_private_operations(engine: sa.Engine) -> None:
     with engine.connect() as connection:
-        for role in ("PUBLIC", "anon", "authenticated"):
+        for role in ("anon", "authenticated"):
             assert not connection.scalar(
                 sa.text("SELECT has_schema_privilege(:role,'operations','USAGE')"), {"role": role}
             )
         assert connection.scalar(
             sa.text("SELECT has_schema_privilege('service_role','operations','USAGE')")
+        )
+        assert not connection.scalar(
+            sa.text(
+                """SELECT EXISTS (SELECT 1 FROM pg_namespace AS namespace,
+                LATERAL aclexplode(COALESCE(namespace.nspacl,
+                  acldefault('n',namespace.nspowner))) acl
+                WHERE namespace.nspname='operations' AND acl.grantee=0)"""
+            )
         )
         assert connection.scalar(
             sa.text(
@@ -113,10 +123,10 @@ def _protected_rows(connection: sa.Connection) -> dict[str, object]:
             """INSERT INTO operations.retention_policies
             (policy_code,target_schema,target_table,record_class,time_column,delete_after_days,
              requires_archive,policy_version,created_by)
-            VALUES (:code,'history','job_observations','other','observed_at',30,false,'v1','test')
-            RETURNING id"""
+            VALUES ('security-finalizer','history','job_status_events','operational_log',
+                    'event_at',30,false,'v1','test')
+            ON CONFLICT (policy_code) DO UPDATE SET updated_at=now() RETURNING id"""
         ),
-        {"code": f"security-{suffix}"},
     )
     retention = connection.scalar(
         sa.text(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from typing import cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 import sqlalchemy as sa
@@ -32,7 +32,6 @@ def engine() -> Iterator[sa.Engine]:
 
 
 def _authorized_run(connection: sa.Connection, item_count: int = 1) -> tuple[UUID, list[int]]:
-    suffix = uuid4().hex
     policy = cast(
         UUID,
         connection.scalar(
@@ -41,10 +40,10 @@ def _authorized_run(connection: sa.Connection, item_count: int = 1) -> tuple[UUI
                 (policy_code,target_schema,target_table,record_class,time_column,
                  delete_after_days,requires_archive,enabled,policy_version,created_by,
                  approved_by,approved_at)
-                VALUES (:code,'history','job_observations','other','observed_at',30,false,true,
-                        'v1','test','reviewer',now()) RETURNING id"""
+                VALUES ('matrix-no-archive','history','job_observations','other','observed_at',
+                        30,false,true,'v1','test','reviewer',now())
+                ON CONFLICT (policy_code) DO UPDATE SET updated_at=now() RETURNING id"""
             ),
-            {"code": f"no-archive-{suffix}"},
         ),
     )
     run = cast(
