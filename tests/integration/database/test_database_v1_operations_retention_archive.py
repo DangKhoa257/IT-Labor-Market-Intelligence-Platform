@@ -294,7 +294,7 @@ def test_legal_hold_update_serializes_with_retention_authorization(engine: sa.En
         assert authorization_future.result(timeout=6) == "23514"
 
 
-def test_archive_object_insert_serializes_with_manifest_finalizer(engine: sa.Engine) -> None:
+def test_archive_object_mutation_serializes_with_manifest_finalizer(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         manifest = connection.scalar(
             sa.text(
@@ -309,24 +309,30 @@ def test_archive_object_insert_serializes_with_manifest_finalizer(engine: sa.Eng
                 RETURNING id"""
             )
         )
+        archive_object = connection.scalar(
+            sa.text(
+                """INSERT INTO operations.archive_objects
+                (archive_manifest_id,sequence_number,storage_uri,content_type,compression,
+                 status,row_count,byte_count,min_record_timestamp,max_record_timestamp,sha256)
+                VALUES (:manifest,1,'s3://bucket/concurrent-object','application/parquet',
+                        'none','uploaded',1,1,'2026-01-01 UTC','2026-01-01 UTC',repeat('b',64))
+                RETURNING id"""
+            ),
+            {"manifest": manifest},
+        )
     manifest_locked = Event()
 
-    def insert_object() -> None:
+    def verify_object() -> None:
         with engine.connect() as connection:
             transaction = connection.begin()
             connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
             connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
             connection.execute(
                 sa.text(
-                    """INSERT INTO operations.archive_objects
-                    (archive_manifest_id,sequence_number,storage_uri,content_type,compression,
-                     status,row_count,byte_count,min_record_timestamp,max_record_timestamp,
-                     sha256,verified_at)
-                    VALUES (:manifest,1,'s3://bucket/concurrent-object','application/parquet',
-                            'none','verified',1,1,'2026-01-01 UTC','2026-01-01 UTC',
-                            repeat('b',64),now())"""
+                    """UPDATE operations.archive_objects
+                    SET status='verified',verified_at=now() WHERE id=:object"""
                 ),
-                {"manifest": manifest},
+                {"object": archive_object},
             )
             manifest_locked.set()
             time.sleep(0.3)
@@ -348,7 +354,7 @@ def test_archive_object_insert_serializes_with_manifest_finalizer(engine: sa.Eng
             )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        object_future = executor.submit(insert_object)
+        object_future = executor.submit(verify_object)
         finalizer_future = executor.submit(finalize)
         object_future.result(timeout=6)
         assert finalizer_future.result(timeout=6) == "verified"

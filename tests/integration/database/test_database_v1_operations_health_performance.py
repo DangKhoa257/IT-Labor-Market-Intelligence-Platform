@@ -101,7 +101,7 @@ def test_health_finalizer_calculates_outcome(
         )
 
 
-def test_health_result_insert_serializes_with_finalizer(engine: sa.Engine) -> None:
+def test_health_result_mutation_serializes_with_finalizer(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         run = connection.scalar(
             sa.text(
@@ -110,20 +110,27 @@ def test_health_result_insert_serializes_with_finalizer(engine: sa.Engine) -> No
                 VALUES ('concurrency-v1','test','running',now()) RETURNING id"""
             )
         )
+        result = connection.scalar(
+            sa.text(
+                """INSERT INTO operations.health_check_results
+                (health_check_run_id,check_code,category,severity,status)
+                VALUES (:run,'concurrent-result','security','warning','warning') RETURNING id"""
+            ),
+            {"run": run},
+        )
     child_locked = Event()
 
-    def insert_result() -> None:
+    def pass_result() -> None:
         with engine.connect() as connection:
             transaction = connection.begin()
             connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
             connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
             connection.execute(
                 sa.text(
-                    """INSERT INTO operations.health_check_results
-                    (health_check_run_id,check_code,category,severity,status)
-                    VALUES (:run,'concurrent-result','security','critical','passed')"""
+                    """UPDATE operations.health_check_results
+                    SET status='passed' WHERE id=:result"""
                 ),
-                {"run": run},
+                {"result": result},
             )
             child_locked.set()
             time.sleep(0.3)
@@ -145,7 +152,7 @@ def test_health_result_insert_serializes_with_finalizer(engine: sa.Engine) -> No
             )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        insert_future = executor.submit(insert_result)
+        insert_future = executor.submit(pass_result)
         finalize_future = executor.submit(finalize)
         insert_future.result(timeout=6)
         assert finalize_future.result(timeout=6) == 1

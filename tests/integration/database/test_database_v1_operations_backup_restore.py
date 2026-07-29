@@ -100,6 +100,7 @@ def test_verified_backup_expiry_and_deletion_preserve_all_evidence(engine: sa.En
     with engine.begin() as connection:
         backup_id = _verified_backup(connection, "verified-expiry")
     with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(sa.text("SET LOCAL ROLE service_role"))
         connection.execute(
             sa.text(
                 """UPDATE operations.backup_snapshots
@@ -184,6 +185,7 @@ def test_backup_rejects_invalid_lifecycle_transitions(
             {"suffix": suffix, "status": initial_status},
         )
     with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(sa.text("SET LOCAL ROLE service_role"))
         connection.execute(
             sa.text(
                 f"""UPDATE operations.backup_snapshots
@@ -347,7 +349,7 @@ def test_restore_finalizer_rejects_revision_and_checksum_mismatch(
         )
 
 
-def test_restore_check_insert_serializes_with_finalizer(engine: sa.Engine) -> None:
+def test_restore_check_mutation_serializes_with_finalizer(engine: sa.Engine) -> None:
     with engine.begin() as connection:
         backup = _verified_backup(connection, "restore-concurrency")
         drill = connection.scalar(
@@ -373,22 +375,28 @@ def test_restore_check_insert_serializes_with_finalizer(engine: sa.Engine) -> No
             ),
             {"drill": drill},
         )
+        checksum_check = connection.scalar(
+            sa.text(
+                """INSERT INTO operations.restore_drill_checks
+                (restore_drill_id,check_code,category,severity,required,status)
+                VALUES (:drill,'backup_checksum','backup','critical',true,'pending') RETURNING id"""
+            ),
+            {"drill": drill},
+        )
     drill_locked = Event()
 
-    def insert_checksum_check() -> None:
+    def pass_checksum_check() -> None:
         with engine.connect() as connection:
             transaction = connection.begin()
             connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
             connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
             connection.execute(
                 sa.text(
-                    """INSERT INTO operations.restore_drill_checks
-                    (restore_drill_id,check_code,category,severity,required,status,actual_json,
-                     finished_at)
-                    VALUES (:drill,'backup_checksum','backup','critical',true,'passed',
-                            jsonb_build_object('checksum',repeat('b',64)),now())"""
+                    """UPDATE operations.restore_drill_checks
+                    SET status='passed',actual_json=jsonb_build_object('checksum',repeat('b',64)),
+                        finished_at=now() WHERE id=:check"""
                 ),
-                {"drill": drill},
+                {"check": checksum_check},
             )
             drill_locked.set()
             time.sleep(0.3)
@@ -407,7 +415,7 @@ def test_restore_check_insert_serializes_with_finalizer(engine: sa.Engine) -> No
             )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        check_future = executor.submit(insert_checksum_check)
+        check_future = executor.submit(pass_checksum_check)
         finalizer_future = executor.submit(finalize)
         check_future.result(timeout=6)
         assert finalizer_future.result(timeout=6) == "succeeded"
