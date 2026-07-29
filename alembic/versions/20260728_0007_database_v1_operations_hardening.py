@@ -962,10 +962,24 @@ def _create_trigger_functions_and_triggers() -> None:
                     SELECT status INTO parent_status FROM operations.retention_runs
                     WHERE id=NEW.retention_run_id FOR UPDATE;
                 END IF;
-                IF parent_status IN ('delete_authorized','deleting','succeeded',
-                                     'partially_succeeded','failed','cancelled') THEN
-                    RAISE EXCEPTION 'retention items are immutable after authorization'
+                IF parent_status IN ('succeeded','partially_succeeded','failed','cancelled') THEN
+                    RAISE EXCEPTION 'retention items are immutable after terminal completion'
                         USING ERRCODE='23514';
+                ELSIF parent_status IN ('delete_authorized','deleting') THEN
+                    IF TG_OP!='UPDATE' THEN
+                        RAISE EXCEPTION 'only evidence-preserving authorized deletion is allowed'
+                            USING ERRCODE='23514';
+                    ELSIF OLD.status!='delete_authorized' OR NEW.status!='deleted'
+                          OR NEW.retention_run_id IS DISTINCT FROM OLD.retention_run_id
+                          OR NEW.target_record_key IS DISTINCT FROM OLD.target_record_key
+                          OR NEW.record_timestamp IS DISTINCT FROM OLD.record_timestamp
+                          OR NEW.archive_object_id IS DISTINCT FROM OLD.archive_object_id
+                          OR NEW.record_sha256 IS DISTINCT FROM OLD.record_sha256
+                          OR NEW.error_message IS DISTINCT FROM OLD.error_message
+                          OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+                        RAISE EXCEPTION 'only evidence-preserving authorized deletion is allowed'
+                            USING ERRCODE='23514';
+                    END IF;
                 END IF;
                 SELECT policy.requires_archive INTO requires_archive
                   FROM operations.retention_runs AS run

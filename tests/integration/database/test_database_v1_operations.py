@@ -332,6 +332,34 @@ def test_downgrade_and_reupgrade_preserve_prior_api(engine: sa.Engine) -> None:
                 )
                 == 1
             )
+            assert (
+                connection.scalar(
+                    sa.text("SELECT count(*) FROM pg_indexes WHERE indexname = ANY(:names)"),
+                    {"names": list(ADDITIVE_INDEXES)},
+                )
+                == 0
+            )
+            api_rows = connection.execute(
+                sa.text(
+                    """SELECT function.prosecdef,function.provolatile,function.proconfig,
+                              has_function_privilege('PUBLIC',function.oid,'EXECUTE'),
+                              has_function_privilege('anon',function.oid,'EXECUTE'),
+                              has_function_privilege('authenticated',function.oid,'EXECUTE'),
+                              has_function_privilege('service_role',function.oid,'EXECUTE')
+                    FROM pg_proc AS function JOIN pg_namespace AS namespace
+                      ON namespace.oid=function.pronamespace
+                    WHERE namespace.nspname='api'"""
+                )
+            ).all()
+            assert len(api_rows) == 8
+            assert all(row[0] and row[1] == "s" for row in api_rows)
+            assert all(row[2] == ["search_path=pg_catalog, api, serving"] for row in api_rows)
+            assert all(not row[3] and row[4] and row[5] and row[6] for row in api_rows)
+            for role in ("PUBLIC", "anon", "authenticated"):
+                assert not connection.scalar(
+                    sa.text("SELECT has_schema_privilege(:role,'history','USAGE')"),
+                    {"role": role},
+                )
     finally:
         command.upgrade(config, "head")
     with engine.connect() as connection:
