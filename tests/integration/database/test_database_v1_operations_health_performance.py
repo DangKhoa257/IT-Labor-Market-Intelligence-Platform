@@ -186,19 +186,18 @@ def test_seven_brin_indexes_are_valid_and_configured(engine: sa.Engine) -> None:
 
 def test_four_partial_indexes_have_exact_predicates(engine: sa.Engine) -> None:
     with engine.connect() as connection:
-        rows = dict(
-            connection.execute(
-                sa.text(
-                    """SELECT index_relation.relname,
+        result = connection.execute(
+            sa.text(
+                """SELECT index_relation.relname,
                               pg_get_expr(catalog_index.indpred,catalog_index.indrelid)
                     FROM pg_index AS catalog_index
                     JOIN pg_class AS index_relation ON index_relation.oid=catalog_index.indexrelid
                     WHERE index_relation.relname = ANY(:names)
                       AND catalog_index.indpred IS NOT NULL"""
-                ),
-                {"names": list(PARTIAL_INDEXES)},
-            ).all()
-        )
+            ),
+            {"names": list(PARTIAL_INDEXES)},
+        ).all()
+        rows: dict[str, str | None] = {str(row[0]): row[1] for row in result}
     assert set(rows) == PARTIAL_INDEXES
     assert "severity" in rows["ix_data_quality_issues__open_critical"]
     assert "status" in rows["ix_job_search_documents__active_posted"]
