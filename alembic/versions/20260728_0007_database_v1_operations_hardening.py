@@ -781,8 +781,9 @@ def _create_trigger_functions_and_triggers() -> None:
         RETURNS trigger LANGUAGE plpgsql
         SET search_path = pg_catalog, operations AS $$
         DECLARE trusted_finalizer BOOLEAN := current_user = (
-            SELECT namespace.nspowner::regrole::text
+            SELECT role.rolname
             FROM pg_namespace AS namespace
+            JOIN pg_roles AS role ON role.oid = namespace.nspowner
             WHERE namespace.nspname = 'operations'
         );
         BEGIN
