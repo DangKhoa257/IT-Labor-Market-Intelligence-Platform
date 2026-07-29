@@ -88,7 +88,8 @@ def test_verified_backup_expiry_and_deletion_preserve_all_evidence(engine: sa.En
         connection.execute(
             sa.text(
                 """UPDATE operations.backup_snapshots
-                SET status='deleted', metadata_json=jsonb_build_object('changed', true) WHERE id=:id"""
+                SET status='deleted', metadata_json=jsonb_build_object('changed', true)
+                WHERE id=:id"""
             ),
             {"id": backup_id},
         )
