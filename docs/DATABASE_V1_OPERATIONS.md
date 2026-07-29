@@ -39,5 +39,12 @@ restore-check mutation versus drill finalization, and retention authorization
 versus legal holds safe under concurrent transactions. Use bounded lock and
 statement timeouts in operational clients.
 
+Retention item insertion and authorization use the same parent-run lock;
+archive-object insertion and manifest finalization use the same manifest lock.
+Consequently a finalizer observes committed child evidence and no late child
+can invalidate a finalized result. Authorized retention deletion records only
+the forward `delete_authorized` to `deleted` child transition while preserving
+all item identity and evidence.
+
 Downgrade to `20260727_0006` removes only Migration 007 objects and its eleven
 additive indexes. It deliberately does not restore insecure historical grants.

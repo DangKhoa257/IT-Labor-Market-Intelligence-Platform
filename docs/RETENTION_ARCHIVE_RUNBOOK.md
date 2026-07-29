@@ -22,5 +22,13 @@ eligible candidates are authorized directly and skipped records still remain
 unchanged. Do not pre-set `delete_authorized`: PostgreSQL permits that state only
 inside the trusted finalizer.
 
+After authorization, the separately reviewed deletion worker may record only
+`retention_run_items.status = 'deleted'` (and `updated_at`) while the parent run
+is `delete_authorized` or `deleting`. The item's target key, timestamp, archive
+lineage, checksum, error evidence, and creation time remain immutable. Once the
+parent is terminal, every child mutation is rejected. After all authorized
+items are recorded as deleted, move the parent through `deleting` to its
+counter-consistent terminal outcome.
+
 Use `operations.v_retention_readiness` to identify disabled, held, never-run,
 running, failed, or ready policies. Verified archive evidence is immutable.

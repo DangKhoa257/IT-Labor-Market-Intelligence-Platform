@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 
 import pytest
 import sqlalchemy as sa
@@ -96,6 +99,56 @@ def test_health_finalizer_calculates_outcome(
             ),
             {"run": run},
         )
+
+
+def test_health_result_insert_serializes_with_finalizer(engine: sa.Engine) -> None:
+    with engine.begin() as connection:
+        run = connection.scalar(
+            sa.text(
+                """INSERT INTO operations.health_check_runs
+                (suite_version,environment_name,status,started_at)
+                VALUES ('concurrency-v1','test','running',now()) RETURNING id"""
+            )
+        )
+    child_locked = Event()
+
+    def insert_result() -> None:
+        with engine.connect() as connection:
+            transaction = connection.begin()
+            connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
+            connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
+            connection.execute(
+                sa.text(
+                    """INSERT INTO operations.health_check_results
+                    (health_check_run_id,check_code,category,severity,status)
+                    VALUES (:run,'concurrent-result','security','critical','passed')"""
+                ),
+                {"run": run},
+            )
+            child_locked.set()
+            time.sleep(0.3)
+            transaction.commit()
+
+    def finalize() -> int:
+        assert child_locked.wait(2)
+        with engine.begin() as connection:
+            connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
+            connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
+            connection.execute(
+                sa.text("SELECT operations.finalize_health_check_run_v1(:run)"), {"run": run}
+            )
+            return int(
+                connection.scalar(
+                    sa.text("SELECT passed_count FROM operations.health_check_runs WHERE id=:run"),
+                    {"run": run},
+                )
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        insert_future = executor.submit(insert_result)
+        finalize_future = executor.submit(finalize)
+        insert_future.result(timeout=6)
+        assert finalize_future.result(timeout=6) == 1
 
 
 def test_all_readiness_and_catalog_views_execute(engine: sa.Engine) -> None:

@@ -814,7 +814,7 @@ def _create_trigger_functions_and_triggers() -> None:
                     (OLD.status='deleting' AND NEW.status IN
                         ('succeeded','partially_succeeded','failed'))
                 ) THEN RAISE EXCEPTION 'invalid retention lifecycle transition'
-                    USING ERRCODE='23514'; END IF;
+                    USING ERRCODE='23514';
                 ELSIF TG_TABLE_NAME='archive_manifests' AND NOT (
                     (OLD.status='pending' AND NEW.status IN ('writing','failed','expired')) OR
                     (OLD.status='writing' AND NEW.status IN ('written','failed','expired')) OR
@@ -835,6 +835,7 @@ def _create_trigger_functions_and_triggers() -> None:
                     (OLD.status='running' AND NEW.status IN
                         ('passed','passed_with_warnings','failed','cancelled'))
                 ) THEN RAISE EXCEPTION 'invalid health lifecycle transition' USING ERRCODE='23514';
+                END IF;
             END IF;
 
             IF TG_OP='UPDATE' AND TG_TABLE_NAME='backup_snapshots' THEN

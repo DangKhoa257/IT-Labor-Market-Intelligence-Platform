@@ -254,7 +254,10 @@ from `candidate` to `archived`, `skipped`, or `failed`, and only the retention
 authorization function can move an archived item to `delete_authorized`.
 No-archive candidates may instead be authorized by that function. Skipped and
 failed items remain unchanged; an authorized item can become `deleted` only
-while its parent run is authorized or deleting.
+while its parent run is authorized or deleting. That deletion-evidence update
+may change only `status` and `updated_at`; target identity, timestamps, archive
+lineage, checksum, error evidence, and creation time remain immutable. A
+terminal parent makes every child mutation immutable.
 
 Execution identities freeze when a run starts or its child evidence begins.
 Archive manifests, backup evidence, restore drills, health checks, and

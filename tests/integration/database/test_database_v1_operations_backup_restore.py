@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from typing import cast
 from uuid import UUID
 
@@ -108,3 +111,69 @@ def test_backup_rejects_direct_succeeded_to_deleted(engine: sa.Engine) -> None:
             sa.text("UPDATE operations.backup_snapshots SET status='deleted' WHERE id=:id"),
             {"id": backup_id},
         )
+
+
+def test_restore_check_insert_serializes_with_finalizer(engine: sa.Engine) -> None:
+    with engine.begin() as connection:
+        backup = _verified_backup(connection, "restore-concurrency")
+        drill = connection.scalar(
+            sa.text(
+                """INSERT INTO operations.restore_drills
+                (backup_snapshot_id,environment_name,status,target_alembic_revision,initiated_by,
+                 measured_restore_seconds,started_at)
+                VALUES (:backup,'test','running','20260728_0007','test',10,now()) RETURNING id"""
+            ),
+            {"backup": backup},
+        )
+        connection.execute(
+            sa.text(
+                """INSERT INTO operations.restore_drill_checks
+                (restore_drill_id,check_code,category,severity,required,status,actual_json,finished_at)
+                SELECT :drill,code,'migration','critical',true,'passed',
+                       CASE WHEN code='alembic_revision'
+                            THEN jsonb_build_object('revision','20260728_0007')
+                            ELSE '{}'::jsonb END,now()
+                FROM unnest(ARRAY['alembic_revision','schema_inventory','row_count_baseline',
+                  'foreign_key_constraints','api_contract','security_grants_rls',
+                  'sample_query_smoke']) AS code"""
+            ),
+            {"drill": drill},
+        )
+    drill_locked = Event()
+
+    def insert_checksum_check() -> None:
+        with engine.connect() as connection:
+            transaction = connection.begin()
+            connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
+            connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
+            connection.execute(
+                sa.text(
+                    """INSERT INTO operations.restore_drill_checks
+                    (restore_drill_id,check_code,category,severity,required,status,actual_json,
+                     finished_at)
+                    VALUES (:drill,'backup_checksum','backup','critical',true,'passed',
+                            jsonb_build_object('checksum',repeat('b',64)),now())"""
+                ),
+                {"drill": drill},
+            )
+            drill_locked.set()
+            time.sleep(0.3)
+            transaction.commit()
+
+    def finalize() -> str:
+        assert drill_locked.wait(2)
+        with engine.begin() as connection:
+            connection.execute(sa.text("SET LOCAL lock_timeout='3s'"))
+            connection.execute(sa.text("SET LOCAL statement_timeout='5s'"))
+            return str(
+                connection.scalar(
+                    sa.text("SELECT (operations.finalize_restore_drill_v1(:drill)).status"),
+                    {"drill": drill},
+                )
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        check_future = executor.submit(insert_checksum_check)
+        finalizer_future = executor.submit(finalize)
+        check_future.result(timeout=6)
+        assert finalizer_future.result(timeout=6) == "succeeded"
