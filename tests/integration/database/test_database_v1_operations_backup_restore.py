@@ -284,9 +284,7 @@ def test_restore_finalizer_requires_each_mandatory_check(
             actual = (
                 {"revision": "20260728_0007"}
                 if code == "alembic_revision"
-                else {"checksum": "b" * 64}
-                if code == "backup_checksum"
-                else {}
+                else {"checksum": "b" * 64} if code == "backup_checksum" else {}
             )
             connection.execute(
                 sa.text(
@@ -328,11 +326,11 @@ def test_restore_finalizer_rejects_revision_and_checksum_mismatch(
             actual = (
                 bad_actual
                 if code == bad_code
-                else '{"revision":"20260728_0007"}'
-                if code == "alembic_revision"
-                else '{"checksum":"' + "b" * 64 + '"}'
-                if code == "backup_checksum"
-                else "{}"
+                else (
+                    '{"revision":"20260728_0007"}'
+                    if code == "alembic_revision"
+                    else '{"checksum":"' + "b" * 64 + '"}' if code == "backup_checksum" else "{}"
+                )
             )
             connection.execute(
                 sa.text(
