@@ -48,3 +48,8 @@ all item identity and evidence.
 
 Downgrade to `20260727_0006` removes only Migration 007 objects and its eleven
 additive indexes. It deliberately does not restore insecure historical grants.
+
+`v_release_readiness.blockers_json` is an exact release contract: a non-ready
+release has one or more truthful blocker entries (including revision, security,
+quality, freshness, stale refresh, backup metadata/readiness, or full-health
+status), while a ready release returns `{}`.

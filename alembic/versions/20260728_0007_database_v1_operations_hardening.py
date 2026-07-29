@@ -1946,16 +1946,20 @@ def _create_remaining_views() -> None:
                 AND stale_freshness_component_count=0 AND stale_running_refresh_count=0
                 AND verified_backup_environment_count>0
                 AND verified_backup_environment_count=ready_backup_environment_count
-                AND COALESCE(latest_health_check_status NOT IN ('failed','cancelled'),true))
+               AND COALESCE(latest_health_check_status NOT IN ('failed','cancelled'),true))
                     AS release_ready,
                jsonb_strip_nulls(jsonb_build_object(
-                   'revision_mismatch', NULLIF(database_revision='20260728_0007',true),
+                   'revision_mismatch',
+                       CASE WHEN database_revision!='20260728_0007' THEN true END,
                    'security_violations', NULLIF(security_violation_count,0),
                    'critical_quality_issues', NULLIF(open_critical_quality_issue_count,0),
                    'stale_freshness_components', NULLIF(stale_freshness_component_count,0),
                    'stale_refreshes', NULLIF(stale_running_refresh_count,0),
                    'backup_metadata_missing',
                        CASE WHEN verified_backup_environment_count=0 THEN true ELSE NULL END,
+                   'backup_restore_not_ready',
+                       CASE WHEN verified_backup_environment_count>ready_backup_environment_count
+                            THEN verified_backup_environment_count-ready_backup_environment_count END,
                    'health_status',
                        CASE WHEN latest_health_check_status IN ('failed','cancelled')
                             THEN latest_health_check_status END)) AS blockers_json,

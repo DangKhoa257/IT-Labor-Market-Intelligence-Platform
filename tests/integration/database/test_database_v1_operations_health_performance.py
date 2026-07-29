@@ -174,6 +174,14 @@ def test_all_readiness_and_catalog_views_execute(engine: sa.Engine) -> None:
             connection.execute(sa.text(f"SELECT * FROM operations.{view} LIMIT 1")).all()
 
 
+def test_release_readiness_never_hides_a_blocker(engine: sa.Engine) -> None:
+    with engine.connect() as connection:
+        release_ready, blockers = connection.execute(
+            sa.text("SELECT release_ready,blockers_json FROM operations.v_release_readiness")
+        ).one()
+    assert (release_ready and blockers == {}) or (not release_ready and blockers != {})
+
+
 def test_seven_brin_indexes_are_valid_and_configured(engine: sa.Engine) -> None:
     with engine.connect() as connection:
         rows = connection.execute(
