@@ -7,7 +7,9 @@ import os
 import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -16,14 +18,23 @@ import sqlalchemy as sa
 from alembic.config import Config
 
 from alembic import command
+from it_labor_market_intelligence.adapters.base import FetchResult
 from it_labor_market_intelligence.adapters.topdev import TOPDEV_IT_LISTING
-from it_labor_market_intelligence.ingestion.cli import PostgreSQLCLIService
+from it_labor_market_intelligence.ingestion.cli import (
+    CLIRejected,
+    PostgreSQLCLIService,
+    PostgreSQLLiveSourceLease,
+    RunPlan,
+)
 from it_labor_market_intelligence.ingestion.repositories import claim_due_task, upsert_raw_object
 from it_labor_market_intelligence.ingestion.runner import (
+    FetchEvidence,
     PlannedTask,
     PostgreSQLRunnerStore,
     RunConfiguration,
 )
+
+FIXTURE_DIR = Path("tests/fixtures/topdev")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(
@@ -202,3 +213,124 @@ def test_two_connections_claiming_one_task_have_one_successful_claim(
             {"run_id": run_id},
         ).one()
     assert tuple(task) == ("running", 1)
+
+
+class _ConcurrencyLiveTransport:
+    def __init__(self, fetched_at: datetime, *, fail: bool = False) -> None:
+        self.fetched_at = fetched_at
+        self.fail = fail
+        self.calls: list[str] = []
+        self.redirect_validator: Any = None
+
+    def set_redirect_validator(self, validator: Any) -> None:
+        self.redirect_validator = validator
+
+    def __call__(self, url: str) -> FetchResult:
+        self.calls.append(url)
+        if self.fail:
+            raise RuntimeError("EXAMPLE_NOT_REAL_DATA live transport failure")
+        return FetchResult(url, 200, b"<html></html>", self.fetched_at, "text/html")
+
+
+def _live_plan(configuration: RunConfiguration) -> RunPlan:
+    return RunPlan(
+        replace(
+            configuration,
+            mode="live",
+            run_type="manual",
+            trigger_type="manual",
+        ),
+        source_enabled=True,
+        policy_approved=True,
+        policy_maximum=configuration.maximum_requests_per_run,
+        fixture_dir=None,
+    )
+
+
+def test_live_source_lease_rejects_second_process_before_run_or_transport(
+    engine: sa.Engine,
+) -> None:
+    configuration = _configuration(engine)
+    plan = _live_plan(configuration)
+    transport = _ConcurrencyLiveTransport(datetime.now(UTC))
+    service = PostgreSQLCLIService(engine, live_transport_factory=lambda _: transport)
+
+    with PostgreSQLLiveSourceLease.acquire(engine, configuration.source_id):
+        with pytest.raises(CLIRejected, match="source lease"):
+            service.execute_run(plan)
+
+    assert transport.calls == []
+    with engine.connect() as connection:
+        assert connection.scalar(sa.text("SELECT count(*) FROM ingestion.crawl_runs")) == 0
+
+
+def test_live_source_lease_releases_after_exception(engine: sa.Engine) -> None:
+    configuration = _configuration(engine)
+    plan = _live_plan(configuration)
+
+    def broken_factory(_: float) -> _ConcurrencyLiveTransport:
+        raise RuntimeError("EXAMPLE_NOT_REAL_DATA factory failure")
+
+    with pytest.raises(RuntimeError, match="factory failure"):
+        PostgreSQLCLIService(engine, live_transport_factory=broken_factory).execute_run(plan)
+
+    with PostgreSQLLiveSourceLease.acquire(engine, configuration.source_id):
+        pass
+
+
+def test_subsequent_live_run_waits_from_prior_persisted_fetch(engine: sa.Engine) -> None:
+    configuration = replace(_configuration(engine), minimum_request_interval_seconds=10.0)
+    store = PostgreSQLRunnerStore(engine)
+    prior_fetch_at = datetime(2026, 7, 30, 10, 0, tzinfo=UTC)
+    run_id = store.create_run(configuration, prior_fetch_at)
+    discovery_task = store.discovery_task_id(run_id)
+    store.persist_fetch(
+        run_id,
+        discovery_task,
+        configuration.source_id,
+        None,
+        FetchEvidence(
+            requested_url=TOPDEV_IT_LISTING,
+            resolved_url=TOPDEV_IT_LISTING,
+            http_status=200,
+            content_type="text/html",
+            response_bytes=0,
+            duration_ms=0,
+            attempt_number=1,
+            outcome="success",
+            fetched_at=prior_fetch_at,
+        ),
+        None,
+    )
+    store.complete_discovery(run_id, [])
+    store.finalize_run(run_id, prior_fetch_at)
+
+    waits: list[float] = []
+    now = prior_fetch_at + timedelta(seconds=3)
+    transport = _ConcurrencyLiveTransport(now)
+    result = PostgreSQLCLIService(
+        engine,
+        now=lambda: now,
+        sleep=waits.append,
+        live_transport_factory=lambda _: transport,
+    ).execute_run(_live_plan(configuration))
+
+    assert waits == [7.0]
+    assert transport.calls == [TOPDEV_IT_LISTING]
+    assert result.status == "failed"
+
+
+def test_fixture_execution_does_not_acquire_live_source_lease(engine: sa.Engine) -> None:
+    configuration = _configuration(engine)
+    plan = RunPlan(
+        configuration,
+        source_enabled=True,
+        policy_approved=True,
+        policy_maximum=configuration.maximum_requests_per_run,
+        fixture_dir=FIXTURE_DIR,
+    )
+
+    with PostgreSQLLiveSourceLease.acquire(engine, configuration.source_id):
+        result = PostgreSQLCLIService(engine).execute_run(plan)
+
+    assert result.status == "succeeded"

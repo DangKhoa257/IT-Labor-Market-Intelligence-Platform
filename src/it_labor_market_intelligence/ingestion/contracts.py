@@ -38,7 +38,9 @@ class IngestionAdapter(Protocol):
     parser_version: str
     record_schema_version: str
 
-    def discover_job_urls(self, limit: int = 30) -> Sequence[str]:
+    def discover_job_urls(
+        self, limit: int = 30, *, request_budget: int | None = None
+    ) -> Sequence[str]:
         """Return at most ``limit`` validated source detail URLs."""
 
     def fetch_job_detail(self, url: str) -> FetchResponse:

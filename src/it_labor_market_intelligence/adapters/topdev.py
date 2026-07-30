@@ -50,6 +50,33 @@ _SAFE_RESPONSE_HEADERS = frozenset(
         "date",
     }
 )
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_TOPDEV_HOSTS = frozenset({"topdev.vn", "www.topdev.vn"})
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: object, **kwargs: object) -> None:
+        return None
+
+
+def _validate_live_transport_url(url: str) -> None:
+    """Reject unsafe origins before an HTTP client can contact them."""
+
+    parsed = urlparse(url)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError("live URL has an invalid port") from error
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname is None
+        or parsed.hostname.casefold() not in _TOPDEV_HOSTS
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+        or port not in {None, 443}
+    ):
+        raise ValueError("live URL violates the approved TopDev HTTPS origin contract")
 
 
 def _safe_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
@@ -117,41 +144,84 @@ class PoliteUrllibTransport:
     def __init__(self, minimum_interval_seconds: float = 2.0) -> None:
         self.minimum_interval_seconds = minimum_interval_seconds
         self._last_request_at = 0.0
+        self._opener = urllib.request.build_opener(_NoRedirectHandler())
+        self._redirect_validator: Callable[[str], None] | None = None
+
+    def set_redirect_validator(self, validator: Callable[[str], None]) -> None:
+        self._redirect_validator = validator
 
     def __call__(self, url: str) -> FetchResult:
+        _validate_live_transport_url(url)
+        return self._request_with_validated_redirects(url)
+
+    def _wait_for_interval(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
         if elapsed < self.minimum_interval_seconds:
             time.sleep(self.minimum_interval_seconds - elapsed)
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                body = response.read()
-                headers = _safe_response_headers(dict(response.headers.items()))
-                result = FetchResult(
-                    url=response.geturl(),
-                    status=response.status,
-                    body=body,
-                    fetched_at=datetime.now(UTC),
-                    content_type=headers.get("Content-Type") or headers.get("content-type"),
-                    headers=headers,
-                )
-        except urllib.error.HTTPError as error:
-            headers = (
-                _safe_response_headers(dict(error.headers.items()))
-                if error.headers is not None
-                else {}
+
+    def _request_with_validated_redirects(self, requested_url: str) -> FetchResult:
+        current_url = requested_url
+        visited = {requested_url}
+        redirects = 0
+        while True:
+            self._wait_for_interval()
+            request = urllib.request.Request(
+                current_url, headers={"User-Agent": USER_AGENT}, method="GET"
             )
-            result = FetchResult(
-                url=url,
-                status=error.code,
-                body=error.read(),
+            try:
+                try:
+                    response = self._opener.open(request, timeout=30)
+                    status = int(response.status)
+                except urllib.error.HTTPError as error:
+                    response = error
+                    status = error.code
+            finally:
+                self._last_request_at = time.monotonic()
+            if not 100 <= status <= 599:
+                response.close()
+                raise OSError("urllib transport returned an invalid HTTP status")
+            raw_headers = dict(response.headers.items()) if response.headers is not None else {}
+            if status in _REDIRECT_STATUSES:
+                location = next(
+                    (value for key, value in raw_headers.items() if key.casefold() == "location"),
+                    None,
+                )
+                if not location:
+                    response.close()
+                    raise OSError("redirect response omitted Location")
+                if redirects >= 3:
+                    response.close()
+                    raise OSError("redirect limit exceeded")
+                target = urljoin(current_url, location)
+                try:
+                    _validate_live_transport_url(target)
+                    if self._redirect_validator is not None:
+                        self._redirect_validator(target)
+                    if target in visited:
+                        raise OSError("redirect loop rejected")
+                finally:
+                    response.close()
+                visited.add(target)
+                redirects += 1
+                current_url = target
+                continue
+            try:
+                resolved_url = response.geturl()
+                _validate_live_transport_url(resolved_url)
+                if resolved_url != current_url:
+                    raise OSError("urllib changed the effective URL without a validated redirect")
+                body = response.read()
+            finally:
+                response.close()
+            headers = _safe_response_headers(raw_headers)
+            return FetchResult(
+                url=resolved_url,
+                status=status,
+                body=body,
                 fetched_at=datetime.now(UTC),
                 content_type=headers.get("Content-Type") or headers.get("content-type"),
                 headers=headers,
             )
-        finally:
-            self._last_request_at = time.monotonic()
-        return result
 
 
 class PoliteCurlTransport:
@@ -164,8 +234,13 @@ class PoliteCurlTransport:
         self.executable = executable
         self.minimum_interval_seconds = minimum_interval_seconds
         self._last_request_at = 0.0
+        self._redirect_validator: Callable[[str], None] | None = None
+
+    def set_redirect_validator(self, validator: Callable[[str], None]) -> None:
+        self._redirect_validator = validator
 
     def __call__(self, url: str) -> FetchResult:
+        _validate_live_transport_url(url)
         elapsed = time.monotonic() - self._last_request_at
         if elapsed < self.minimum_interval_seconds:
             time.sleep(self.minimum_interval_seconds - elapsed)
@@ -176,9 +251,6 @@ class PoliteCurlTransport:
                     self.executable,
                     "--silent",
                     "--show-error",
-                    "--location",
-                    "--max-redirs",
-                    "3",
                     "--max-time",
                     "30",
                     "--user-agent",
@@ -194,30 +266,49 @@ class PoliteCurlTransport:
             )
         finally:
             self._last_request_at = time.monotonic()
+        if completed.returncode != 0:
+            if completed.returncode == 28:
+                raise TimeoutError("curl transport timed out")
+            raise OSError("curl transport failed")
         if marker not in completed.stdout:
-            message = completed.stderr.decode("utf-8", errors="replace").strip()
-            raise OSError(message or f"curl failed with exit code {completed.returncode}")
+            raise OSError("curl transport metadata is missing")
         body, metadata = completed.stdout.rsplit(marker, maxsplit=1)
-        status_text, effective_url, content_type, header_json = metadata.decode(
-            "utf-8", errors="replace"
-        ).split("\t", maxsplit=3)
+        try:
+            status_text, effective_url, content_type, header_json = metadata.decode(
+                "utf-8", errors="strict"
+            ).split("\t", maxsplit=3)
+        except (UnicodeDecodeError, ValueError) as error:
+            raise OSError("curl transport metadata is malformed") from error
+        if not status_text.isdigit():
+            raise OSError("curl transport status is malformed")
+        status = int(status_text)
+        if status == 0 or not 100 <= status <= 599:
+            raise OSError("curl transport returned no valid HTTP status")
+        _validate_live_transport_url(effective_url)
+        if effective_url != url:
+            raise OSError("curl effective URL changed without a validated redirect")
+        if status in _REDIRECT_STATUSES:
+            raise OSError("curl redirect response is not followed")
         try:
             decoded_headers = json.loads(header_json)
-        except json.JSONDecodeError:
-            decoded_headers = {}
+        except json.JSONDecodeError as error:
+            raise OSError("curl response header metadata is malformed") from error
+        if not isinstance(decoded_headers, dict):
+            raise OSError("curl response header metadata is malformed")
         rendered_headers: dict[str, str] = {}
-        if isinstance(decoded_headers, dict):
-            for key, value in decoded_headers.items():
-                if not isinstance(key, str):
-                    continue
-                if isinstance(value, str):
-                    rendered_headers[key] = value
-                elif isinstance(value, list) and all(isinstance(item, str) for item in value):
-                    rendered_headers[key] = ", ".join(value)
+        for key, value in decoded_headers.items():
+            if not isinstance(key, str):
+                raise OSError("curl response header metadata is malformed")
+            if isinstance(value, str):
+                rendered_headers[key] = value
+            elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+                rendered_headers[key] = ", ".join(value)
+            else:
+                raise OSError("curl response header metadata is malformed")
         headers = _safe_response_headers(rendered_headers)
         return FetchResult(
             url=effective_url,
-            status=int(status_text),
+            status=status,
             body=body,
             fetched_at=datetime.now(UTC),
             content_type=content_type or None,
@@ -398,17 +489,25 @@ class TopDevAdapter(SourceAdapter):
         self._transport = transport or PoliteUrllibTransport()
         self._discovery_methods: dict[str, str] = {}
 
-    def discover_job_urls(self, limit: int = 30) -> tuple[str, ...]:
+    def discover_job_urls(
+        self, limit: int = 30, *, request_budget: int | None = None
+    ) -> tuple[str, ...]:
         if not 1 <= limit <= 30:
             raise ValueError("TopDev pilot limit must be between 1 and 30")
+        if request_budget is not None and request_budget < 1:
+            raise ValueError("TopDev discovery request budget must be at least 1")
         discovered: list[str] = []
         seen_jobs: set[str] = set()
         page_number = 1
+        pages_requested = 0
         while len(discovered) < limit:
+            if request_budget is not None and pages_requested >= request_budget:
+                break
             listing_url = (
                 TOPDEV_IT_LISTING if page_number == 1 else f"{TOPDEV_IT_LISTING}?page={page_number}"
             )
             response = self._transport(listing_url)
+            pages_requested += 1
             if response.status != 200:
                 raise RuntimeError(
                     f"IT listing request returned HTTP {response.status}: {listing_url}"

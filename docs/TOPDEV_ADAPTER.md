@@ -17,6 +17,13 @@ Its response contract carries only allowlisted cache and retry metadata: content
 Last-Modified, Cache-Control, Retry-After, and Date. Cookie, Set-Cookie, authorization, CSRF,
 session, and unknown headers are discarded before ingestion persistence.
 
+Automatic redirects are disabled. Urllib resolves and validates at most three redirects before
+contacting each target: HTTPS only, `topdev.vn` or `www.topdev.vn`, default port, no user-info or
+fragment, no loop, and a path permitted by both approved and blocked policy rules. Curl never uses
+automatic redirect following. Invalid curl exit codes, status `000`, malformed metadata/status or
+headers, and invalid effective URLs become sanitized transport failures rather than `FetchResult`
+objects.
+
 When description storage is disabled, the adapter may parse it in memory but persists
 `description_raw=null` and `description_storage_suppressed=true`. Direct-payload hashes use the
 versioned canonical JSON contract described in
@@ -44,8 +51,9 @@ All adapters implement `SourceAdapter`:
 - `detect_closed_state(page)` returns `active`, `expired`, or `unknown` from explicit evidence.
 
 The transport is injectable. Tests use in-memory responses; the default transport uses Python's
-standard library. A curl transport is available for Python runtimes built without HTTPS support; it
-uses the same identity, timeout, redirect cap, rate interval, and no-retry behavior.
+standard library. A curl transport is available for Python runtimes built without HTTPS support;
+it uses the same identity, timeout, URL restrictions, rate interval, and no-retry behavior, and
+returns redirect responses without following them.
 
 ## Discovery
 

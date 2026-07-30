@@ -256,6 +256,10 @@ def replace_limit(configuration: RunConfiguration, limit: int) -> RunConfigurati
 class _NetworkFreeLiveTransport:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.redirect_validator: Callable[[str], None] | None = None
+
+    def set_redirect_validator(self, validator: Callable[[str], None]) -> None:
+        self.redirect_validator = validator
 
     def __call__(self, url: str) -> FetchResult:
         self.calls.append(url)
@@ -317,6 +321,40 @@ class _RetryingNetworkFreeLiveTransport(_NetworkFreeLiveTransport):
             content_type="text/html",
             headers={"Content-Type": "text/html"},
         )
+
+
+class _ScriptedBudgetTransport:
+    def __init__(self, responses: Mapping[str, Sequence[FetchResult | Exception]]) -> None:
+        self.responses = {url: list(items) for url, items in responses.items()}
+        self.calls: list[str] = []
+        self.redirect_validator: Callable[[str], None] | None = None
+
+    def set_redirect_validator(self, validator: Callable[[str], None]) -> None:
+        self.redirect_validator = validator
+
+    def __call__(self, url: str) -> FetchResult:
+        self.calls.append(url)
+        item = self.responses[url].pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def _live_response(
+    url: str,
+    body: bytes,
+    *,
+    status: int = 200,
+    headers: Mapping[str, str] | None = None,
+) -> FetchResult:
+    return FetchResult(
+        url=url,
+        status=status,
+        body=body,
+        fetched_at=datetime.now(UTC),
+        content_type="text/html",
+        headers=headers or {"Content-Type": "text/html"},
+    )
 
 
 def test_bootstrap_idempotency_policy_preservation_enable_and_parser_rotation(
@@ -500,6 +538,7 @@ def test_live_policy_paths_interval_snapshot_and_response_headers(engine: sa.Eng
         engine,
         git_commit_sha="1234567",
         live_transport_factory=factory,
+        sleep=lambda _: None,
     )
     plan = service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
     result = service.execute_run(plan)
@@ -546,6 +585,7 @@ def test_live_retry_after_header_drives_bounded_retry_schedule(engine: sa.Engine
     service = PostgreSQLCLIService(
         engine,
         live_transport_factory=lambda _: transport,
+        sleep=lambda _: None,
     )
     plan = service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
     initial = service.execute_run(plan)
@@ -593,6 +633,7 @@ def test_live_policy_rejects_blocked_and_unapproved_discovery_paths(engine: sa.E
     service = PostgreSQLCLIService(
         engine,
         live_transport_factory=lambda _: _NetworkFreeLiveTransport(),
+        sleep=lambda _: None,
     )
     request = RunRequest("topdev", 1, "live", "manual", None, False, False)
 
@@ -623,7 +664,7 @@ def test_live_policy_rejects_blocked_and_unapproved_discovery_paths(engine: sa.E
         service.plan_run(request)
 
 
-def test_live_policy_never_exceeds_maximum_request_count(engine: sa.Engine) -> None:
+def test_live_max_one_limit_one_rejects_before_writes_or_transport(engine: sa.Engine) -> None:
     _bootstrap(engine)
     with engine.begin() as connection:
         connection.execute(
@@ -633,29 +674,201 @@ def test_live_policy_never_exceeds_maximum_request_count(engine: sa.Engine) -> N
     service = PostgreSQLCLIService(
         engine,
         live_transport_factory=lambda _: transport,
+        sleep=lambda _: None,
     )
-    plan = service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
-    result = service.execute_run(plan)
+    with pytest.raises(CLIRejected, match="one discovery request"):
+        service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
 
-    assert result.status == "failed"
-    assert transport.calls == [TOPDEV_IT_LISTING]
+    assert transport.calls == []
+    with engine.connect() as connection:
+        assert connection.scalar(sa.text("SELECT count(*) FROM ingestion.crawl_runs")) == 0
+
+
+def test_live_max_two_limit_one_uses_one_discovery_and_one_detail(engine: sa.Engine) -> None:
+    _bootstrap(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE ingestion.source_policies SET maximum_requests_per_run=2")
+        )
+    transport = _NetworkFreeLiveTransport()
+    service = PostgreSQLCLIService(
+        engine, live_transport_factory=lambda _: transport, sleep=lambda _: None
+    )
+
+    result = service.execute_run(
+        service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
+    )
+
+    assert result.status == "succeeded"
+    assert transport.calls == [TOPDEV_IT_LISTING, ACTIVE_URL]
+
+
+def test_live_max_thirty_limit_thirty_rejects_during_planning(engine: sa.Engine) -> None:
+    _bootstrap(engine)
+    transport = _NetworkFreeLiveTransport()
+    service = PostgreSQLCLIService(
+        engine, live_transport_factory=lambda _: transport, sleep=lambda _: None
+    )
+
+    with pytest.raises(CLIRejected, match="one discovery request"):
+        service.plan_run(RunRequest("topdev", 30, "live", "manual", None, False, False))
+
+    assert transport.calls == []
+    with engine.connect() as connection:
+        assert connection.scalar(sa.text("SELECT count(*) FROM ingestion.crawl_runs")) == 0
+
+
+def test_multi_page_discovery_cannot_consume_reserved_detail_capacity(
+    engine: sa.Engine,
+) -> None:
+    _bootstrap(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE ingestion.source_policies SET maximum_requests_per_run=3")
+        )
+    page_two = f"{TOPDEV_IT_LISTING}?page=2"
+    transport = _ScriptedBudgetTransport(
+        {
+            TOPDEV_IT_LISTING: [_live_response(TOPDEV_IT_LISTING, _listing([ACTIVE_URL]))],
+            page_two: [_live_response(page_two, _listing([EXPIRED_URL]))],
+            ACTIVE_URL: [_live_response(ACTIVE_URL, _body("job_active.html"))],
+        }
+    )
+    service = PostgreSQLCLIService(
+        engine, live_transport_factory=lambda _: transport, sleep=lambda _: None
+    )
+
+    result = service.execute_run(
+        service.plan_run(RunRequest("topdev", 2, "live", "manual", None, False, False))
+    )
+
+    assert result.status == "succeeded"
+    assert transport.calls == [TOPDEV_IT_LISTING, ACTIVE_URL]
+    assert page_two not in transport.calls
+
+
+def test_reserved_capacity_allows_every_planned_detail_first_attempt(engine: sa.Engine) -> None:
+    _bootstrap(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE ingestion.source_policies SET maximum_requests_per_run=3")
+        )
+    transport = _ScriptedBudgetTransport(
+        {
+            TOPDEV_IT_LISTING: [
+                _live_response(TOPDEV_IT_LISTING, _listing([ACTIVE_URL, EXPIRED_URL]))
+            ],
+            ACTIVE_URL: [_live_response(ACTIVE_URL, _body("job_active.html"))],
+            EXPIRED_URL: [_live_response(EXPIRED_URL, _body("job_expired.html"))],
+        }
+    )
+    service = PostgreSQLCLIService(
+        engine, live_transport_factory=lambda _: transport, sleep=lambda _: None
+    )
+
+    result = service.execute_run(
+        service.plan_run(RunRequest("topdev", 2, "live", "manual", None, False, False))
+    )
+
+    assert result.status == "succeeded"
+    assert transport.calls == [TOPDEV_IT_LISTING, ACTIVE_URL, EXPIRED_URL]
+
+
+def test_unused_discovery_budget_remains_available_to_detail_retry(engine: sa.Engine) -> None:
+    _bootstrap(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE ingestion.source_policies SET maximum_requests_per_run=4")
+        )
+    transport = _ScriptedBudgetTransport(
+        {
+            TOPDEV_IT_LISTING: [_live_response(TOPDEV_IT_LISTING, _listing([ACTIVE_URL]))],
+            ACTIVE_URL: [
+                _live_response(
+                    ACTIVE_URL,
+                    _body("response_429.html"),
+                    status=429,
+                    headers={"Retry-After": "1"},
+                ),
+                _live_response(ACTIVE_URL, _body("job_active.html")),
+            ],
+        }
+    )
+    service = PostgreSQLCLIService(
+        engine, live_transport_factory=lambda _: transport, sleep=lambda _: None
+    )
+    initial = service.execute_run(
+        service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
+    )
+    assert initial.status == "running"
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE ingestion.crawl_tasks SET scheduled_for=now() WHERE crawl_run_id=:run_id"
+            ),
+            {"run_id": initial.run_id},
+        )
+
+    resumed = service.retry_run(initial.run_id, None)
+
+    assert resumed.status == "succeeded"
+    assert transport.calls == [TOPDEV_IT_LISTING, ACTIVE_URL, ACTIVE_URL]
+
+
+def test_retries_exhausting_budget_terminalize_pending_once_without_extra_fetch(
+    engine: sa.Engine,
+) -> None:
+    _bootstrap(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("UPDATE ingestion.source_policies SET maximum_requests_per_run=3")
+        )
+    transport = _ScriptedBudgetTransport(
+        {
+            TOPDEV_IT_LISTING: [_live_response(TOPDEV_IT_LISTING, _listing([ACTIVE_URL]))],
+            ACTIVE_URL: [
+                _live_response(ACTIVE_URL, b"rate", status=429, headers={"Retry-After": "1"}),
+                _live_response(ACTIVE_URL, b"rate", status=429, headers={"Retry-After": "1"}),
+                AssertionError("third detail request must not occur"),
+            ],
+        }
+    )
+    service = PostgreSQLCLIService(
+        engine, live_transport_factory=lambda _: transport, sleep=lambda _: None
+    )
+    initial = service.execute_run(
+        service.plan_run(RunRequest("topdev", 1, "live", "manual", None, False, False))
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE ingestion.crawl_tasks SET scheduled_for=now() WHERE crawl_run_id=:run_id"
+            ),
+            {"run_id": initial.run_id},
+        )
+
+    exhausted = service.retry_run(initial.run_id, None)
+
+    assert exhausted.status == "failed"
+    assert transport.calls == [TOPDEV_IT_LISTING, ACTIVE_URL, ACTIVE_URL]
     with engine.connect() as connection:
         assert (
             connection.scalar(
                 sa.text("SELECT count(*) FROM ingestion.fetch_events WHERE crawl_run_id=:run_id"),
-                {"run_id": result.run_id},
+                {"run_id": initial.run_id},
             )
-            == 1
+            == 3
         )
         assert (
             connection.scalar(
                 sa.text(
                     """
                 SELECT count(*) FROM ingestion.crawl_errors
-                WHERE crawl_run_id=:run_id AND category='policy_blocked'
+                WHERE crawl_run_id=:run_id
+                  AND error_code='policy_request_budget_exhausted'
                 """
                 ),
-                {"run_id": result.run_id},
+                {"run_id": initial.run_id},
             )
             == 1
         )
@@ -1068,15 +1281,70 @@ def test_retry_run_uses_immutable_policy_snapshot_after_policy_changes(
     assert retention == timedelta(days=30)
 
 
-def test_live_retry_rejects_new_current_blocked_path(engine: sa.Engine) -> None:
+@pytest.mark.parametrize(
+    "policy_change_sql",
+    [
+        "UPDATE ingestion.source_policies SET allow_description_storage=false",
+        "UPDATE ingestion.source_policies SET allow_raw_storage=false",
+        "UPDATE ingestion.source_policies SET minimum_request_interval_seconds=3.000",
+        "UPDATE ingestion.source_policies SET maximum_requests_per_run=29",
+        "UPDATE ingestion.source_policies SET maximum_concurrent_requests=2",
+        "UPDATE ingestion.source_policies SET " "approved_paths='[\"/viec-lam/*\"]'::jsonb",
+        "UPDATE ingestion.source_policies SET "
+        "blocked_paths='[\"/viec-lam/fixture-active-engineer-3100001\"]'::jsonb",
+        "UPDATE ingestion.source_policies SET raw_retention_days=31",
+        "UPDATE ingestion.source_policies SET description_retention_days=91",
+        "UPDATE ingestion.source_policies SET policy_version='topdev-policy-v2'",
+    ],
+    ids=(
+        "description-storage",
+        "raw-storage",
+        "minimum-interval",
+        "maximum-requests",
+        "maximum-concurrency",
+        "approved-paths",
+        "blocked-paths",
+        "raw-retention",
+        "description-retention",
+        "policy-version",
+    ),
+)
+def test_live_retry_rejects_every_changed_policy_field_before_transport(
+    engine: sa.Engine, policy_change_sql: str
+) -> None:
     base = _bootstrap(engine)
     configuration = replace(
         base,
         mode="live",
         run_type="manual",
         trigger_type="manual",
-        approved_paths=("/viec-lam/*",),
-        blocked_paths=(),
+    )
+    store = PostgreSQLRunnerStore(engine)
+    run_id = store.create_run(configuration, datetime.now(UTC))
+    store.complete_discovery(
+        run_id,
+        [PlannedTask(ACTIVE_URL, "3100001", "approved-live-fixture")],
+    )
+    transport = _NetworkFreeLiveTransport()
+    with engine.begin() as connection:
+        connection.execute(sa.text(policy_change_sql))
+
+    with pytest.raises(CLIRejected, match="policy changed"):
+        PostgreSQLCLIService(
+            engine,
+            live_transport_factory=lambda _: transport,
+            sleep=lambda _: None,
+        ).retry_run(run_id, None)
+    assert transport.calls == []
+
+
+def test_live_retry_accepts_equivalent_new_current_policy_row(engine: sa.Engine) -> None:
+    base = _bootstrap(engine)
+    configuration = replace(
+        base,
+        mode="live",
+        run_type="manual",
+        trigger_type="manual",
     )
     store = PostgreSQLRunnerStore(engine)
     run_id = store.create_run(configuration, datetime.now(UTC))
@@ -1085,20 +1353,52 @@ def test_live_retry_rejects_new_current_blocked_path(engine: sa.Engine) -> None:
         [PlannedTask(ACTIVE_URL, "3100001", "approved-live-fixture")],
     )
     with engine.begin() as connection:
+        original_id = connection.scalar(
+            sa.text(
+                "SELECT id FROM ingestion.source_policies WHERE policy_version='topdev-policy-v1'"
+            )
+        )
         connection.execute(
             sa.text(
                 """
                 UPDATE ingestion.source_policies
-                SET blocked_paths='["/viec-lam/fixture-active-engineer-3100001"]'::jsonb
+                SET policy_version='topdev-policy-v1-archived', valid_to=now()
+                WHERE id=:original_id
                 """
-            )
+            ),
+            {"original_id": original_id},
         )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO ingestion.source_policies (
+                    source_id, policy_version, robots_review_status,
+                    terms_review_status, approved_paths, blocked_paths,
+                    minimum_request_interval_seconds, maximum_requests_per_run,
+                    maximum_concurrent_requests, raw_retention_days,
+                    description_retention_days, allow_raw_storage,
+                    allow_description_storage, reviewed_by, reviewed_at, valid_from
+                )
+                SELECT source_id, 'topdev-policy-v1', robots_review_status,
+                       terms_review_status, approved_paths, blocked_paths,
+                       minimum_request_interval_seconds, maximum_requests_per_run,
+                       maximum_concurrent_requests, raw_retention_days,
+                       description_retention_days, allow_raw_storage,
+                       allow_description_storage, 'equivalent-policy-test', now(), now()
+                FROM ingestion.source_policies WHERE id=:original_id
+                """
+            ),
+            {"original_id": original_id},
+        )
+    transport = _NetworkFreeLiveTransport()
+    result = PostgreSQLCLIService(
+        engine,
+        live_transport_factory=lambda _: transport,
+        sleep=lambda _: None,
+    ).retry_run(run_id, None)
 
-    with pytest.raises(CLIRejected, match="blocked by the current source policy"):
-        PostgreSQLCLIService(
-            engine,
-            live_transport_factory=lambda _: _NetworkFreeLiveTransport(),
-        ).retry_run(run_id, None)
+    assert result.status == "succeeded"
+    assert transport.calls == [ACTIVE_URL]
 
 
 def test_http_403_is_not_retried(engine: sa.Engine) -> None:

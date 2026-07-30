@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -43,7 +45,6 @@ from .runner import (
     RunConfiguration,
     RunResult,
     url_allowed_by_policy,
-    url_blocked_by_policy,
 )
 from .sanitization import sanitize_error
 
@@ -56,6 +57,68 @@ EXIT_INTERNAL_FAILURE = 5
 
 class CLIRejected(ValueError):
     """An operator request rejected before ingestion writes begin."""
+
+
+def live_source_advisory_lock_key(source_id: UUID) -> int:
+    """Return a stable signed PostgreSQL advisory-lock key for live ingestion."""
+
+    digest = hashlib.sha256(b"itlm:live-source:" + source_id.bytes).digest()[:8]
+    return int.from_bytes(digest, byteorder="big", signed=True)
+
+
+class PostgreSQLLiveSourceLease:
+    """A source-wide session advisory lock held without an open transaction."""
+
+    def __init__(self, connection: sa.Connection, source_id: UUID) -> None:
+        self._connection = connection
+        self.source_id = source_id
+        self.lock_key = live_source_advisory_lock_key(source_id)
+        self._released = False
+
+    @classmethod
+    def acquire(cls, engine: sa.Engine, source_id: UUID) -> PostgreSQLLiveSourceLease:
+        connection = engine.connect()
+        key = live_source_advisory_lock_key(source_id)
+        try:
+            acquired = bool(
+                connection.scalar(sa.text("SELECT pg_try_advisory_lock(:key)"), {"key": key})
+            )
+            connection.commit()
+        except Exception:
+            connection.close()
+            raise
+        if not acquired:
+            connection.close()
+            raise CLIRejected("another live TopDev execution already holds the source lease")
+        return cls(connection, source_id)
+
+    def latest_fetch_at(self) -> datetime | None:
+        value = self._connection.scalar(
+            sa.text(
+                "SELECT max(fetched_at) FROM ingestion.fetch_events WHERE source_id=:source_id"
+            ),
+            {"source_id": self.source_id},
+        )
+        self._connection.commit()
+        return cast(datetime | None, value)
+
+    def release(self) -> None:
+        if self._released:
+            return
+        try:
+            self._connection.execute(
+                sa.text("SELECT pg_advisory_unlock(:key)"), {"key": self.lock_key}
+            )
+            self._connection.commit()
+        finally:
+            self._released = True
+            self._connection.close()
+
+    def __enter__(self) -> PostgreSQLLiveSourceLease:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.release()
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,11 +401,13 @@ class PostgreSQLCLIService:
         now: Callable[[], datetime] | None = None,
         git_commit_sha: str | None = None,
         live_transport_factory: Callable[[float], FetchTransport] | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._engine = engine
         self._now = now or (lambda: datetime.now(UTC))
         self._git_commit_sha = git_commit_sha
         self._live_transport_factory = live_transport_factory or PoliteUrllibTransport
+        self._sleep = sleep or time.sleep
 
     def bootstrap_topdev(self, enable: bool) -> BootstrapResult:
         now = self._aware_now()
@@ -455,6 +520,15 @@ class PostgreSQLCLIService:
 
     def execute_run(self, plan: RunPlan) -> RunResult:
         _validate_plan(plan)
+        if plan.configuration.mode == "live":
+            with PostgreSQLLiveSourceLease.acquire(
+                self._engine, plan.configuration.source_id
+            ) as lease:
+                self._wait_for_source_interval(
+                    lease, plan.configuration.minimum_request_interval_seconds
+                )
+                runner = self._runner_for_plan(plan)
+                return runner.run()
         runner = self._runner_for_plan(plan)
         return runner.run()
 
@@ -475,7 +549,18 @@ class PostgreSQLCLIService:
                            original_policy.terms_review_status AS original_terms_status,
                            current_policy.robots_review_status AS current_robots_status,
                            current_policy.terms_review_status AS current_terms_status,
+                           current_policy.policy_version AS current_policy_version,
+                           current_policy.minimum_request_interval_seconds AS current_interval,
+                           current_policy.maximum_requests_per_run AS current_maximum_requests,
+                           current_policy.maximum_concurrent_requests
+                             AS current_maximum_concurrency,
+                           current_policy.approved_paths AS current_approved_paths,
                            current_policy.blocked_paths AS current_blocked_paths,
+                           current_policy.raw_retention_days AS current_raw_retention,
+                           current_policy.description_retention_days
+                             AS current_description_retention,
+                           current_policy.allow_raw_storage AS current_allow_raw,
+                           current_policy.allow_description_storage AS current_allow_description,
                            (SELECT count(*) FROM ingestion.fetch_events AS fetch_event
                             WHERE fetch_event.crawl_run_id=run.id) AS attempted_requests
                     FROM ingestion.crawl_runs AS run
@@ -484,8 +569,14 @@ class PostgreSQLCLIService:
                       ON original_policy.id=run.source_policy_id
                     JOIN ingestion.parser_versions AS parser ON parser.id=run.parser_version_id
                     LEFT JOIN LATERAL (
-                        SELECT policy.robots_review_status, policy.terms_review_status,
-                               policy.blocked_paths
+                        SELECT policy.policy_version, policy.robots_review_status,
+                               policy.terms_review_status,
+                               policy.minimum_request_interval_seconds,
+                               policy.maximum_requests_per_run,
+                               policy.maximum_concurrent_requests,
+                               policy.approved_paths, policy.blocked_paths,
+                               policy.raw_retention_days, policy.description_retention_days,
+                               policy.allow_raw_storage, policy.allow_description_storage
                         FROM ingestion.source_policies AS policy
                         WHERE policy.source_id=run.source_id AND policy.valid_from<=:at
                           AND (policy.valid_to IS NULL OR policy.valid_to>:at)
@@ -527,7 +618,26 @@ class PostgreSQLCLIService:
                 or row["current_terms_status"] != "approved"
             ):
                 raise CLIRejected("live retry is no longer authorized by source policy")
+            current_approved = _path_tuple(row["current_approved_paths"], "approved_paths")
             current_blocked = _path_tuple(row["current_blocked_paths"], "blocked_paths")
+            current_configuration = replace(
+                configuration,
+                policy_version=str(row["current_policy_version"]),
+                minimum_request_interval_seconds=float(row["current_interval"]),
+                maximum_requests_per_run=int(row["current_maximum_requests"]),
+                maximum_concurrent_requests=int(row["current_maximum_concurrency"]),
+                approved_paths=current_approved,
+                blocked_paths=current_blocked,
+                raw_retention_days=cast(int | None, row["current_raw_retention"]),
+                description_retention_days=cast(int | None, row["current_description_retention"]),
+                allow_raw_storage=bool(row["current_allow_raw"]),
+                allow_description_storage=bool(row["current_allow_description"]),
+            )
+            if (
+                current_configuration.policy_execution_hash()
+                != configuration.policy_execution_hash()
+            ):
+                raise CLIRejected("live retry policy changed; create a new crawl run")
             with self._engine.connect() as connection:
                 continuation_urls = connection.scalars(
                     sa.text(
@@ -540,8 +650,14 @@ class PostgreSQLCLIService:
                     ),
                     {"run_id": run_id},
                 ).all()
-            if any(url_blocked_by_policy(str(url), current_blocked) for url in continuation_urls):
-                raise CLIRejected("live retry is blocked by the current source policy")
+            if any(
+                not url_allowed_by_policy(
+                    str(url), configuration.approved_paths, configuration.blocked_paths
+                )
+                or not url_allowed_by_policy(str(url), current_approved, current_blocked)
+                for url in continuation_urls
+            ):
+                raise CLIRejected("live retry URL is no longer authorized; create a new crawl run")
         plan = RunPlan(
             configuration=configuration,
             source_enabled=bool(row["is_enabled"]),
@@ -554,6 +670,12 @@ class PostgreSQLCLIService:
             requests_already_attempted=int(row["attempted_requests"]),
         )
         _validate_plan(plan)
+        if configuration.mode == "live":
+            with PostgreSQLLiveSourceLease.acquire(self._engine, configuration.source_id) as lease:
+                self._wait_for_source_interval(
+                    lease, configuration.minimum_request_interval_seconds
+                )
+                return self._runner_for_plan(plan).resume(run_id)
         return self._runner_for_plan(plan).resume(run_id)
 
     def inspect_run(self, run_id: UUID) -> dict[str, JsonValue]:
@@ -620,6 +742,10 @@ class PostgreSQLCLIService:
                 maximum_concurrent_requests=plan.configuration.maximum_concurrent_requests,
                 initial_request_count=plan.requests_already_attempted,
             )
+            redirect_validator = getattr(live_transport, "set_redirect_validator", None)
+            if not callable(redirect_validator):
+                raise CLIRejected("live transport cannot validate redirect targets")
+            redirect_validator(policy_transport.validate_redirect_target)
             adapter = registration.adapter(policy_transport)
         return IngestionRunner(
             adapter=cast(IngestionAdapter, adapter),
@@ -629,6 +755,16 @@ class PostgreSQLCLIService:
             transport_observer=observer,
             now=self._now,
         )
+
+    def _wait_for_source_interval(
+        self, lease: PostgreSQLLiveSourceLease, minimum_interval_seconds: float
+    ) -> None:
+        latest = lease.latest_fetch_at()
+        if latest is None:
+            return
+        remaining = minimum_interval_seconds - (self._aware_now() - latest).total_seconds()
+        if remaining > 0:
+            self._sleep(remaining)
 
     def _aware_now(self) -> datetime:
         value = self._now()
@@ -757,6 +893,11 @@ def _validate_plan(plan: RunPlan) -> None:
     if configuration.mode == "live":
         if not plan.source_enabled or not plan.policy_approved:
             raise CLIRejected("live mode requires an enabled source and approved current policy")
+        if configuration.requested_limit + 1 > configuration.maximum_requests_per_run:
+            raise CLIRejected(
+                "live request budget must allow one discovery request plus "
+                "every detail first attempt"
+            )
         if not url_allowed_by_policy(
             configuration.discovery_url,
             configuration.approved_paths,
@@ -835,7 +976,7 @@ def _configuration_from_snapshot(
     policy_version = _snapshot_value(snapshot, "policy_version")
     if not isinstance(discovery_url, str) or not isinstance(policy_version, str):
         raise CLIRejected("crawl run policy snapshot has invalid string values")
-    return RunConfiguration(
+    configuration = RunConfiguration(
         source_id=source_id,
         source_slug=source_slug,
         source_policy_id=source_policy_id,
@@ -860,6 +1001,10 @@ def _configuration_from_snapshot(
         parser_version=parser_version,
         record_schema_version=schema_version,
     )
+    stored_hash = _snapshot_value(snapshot, "policy_execution_hash")
+    if not isinstance(stored_hash, str) or stored_hash != configuration.policy_execution_hash():
+        raise CLIRejected("crawl run policy execution snapshot hash is invalid")
+    return configuration
 
 
 def _trigger_types(

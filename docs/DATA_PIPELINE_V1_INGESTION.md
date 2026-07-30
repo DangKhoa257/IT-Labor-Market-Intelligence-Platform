@@ -73,10 +73,31 @@ A disabled or unapproved source can be exercised only with `--trigger test`.
 
 Live mode is opt-in with `--mode live`. It requires both an enabled source and a currently approved
 policy. Blocked paths override approved paths, and discovery plus every detail request is checked
-before transport work. A policy wrapper enforces the total request count and maximum concurrency,
-while the resolved policy interval is passed to the TopDev transport even when greater than two
-seconds. The transport remains bounded to public GET requests, limited redirects, and no login,
-CAPTCHA bypass, proxy rotation, or 403 retry. Nothing schedules live mode automatically.
+before transport work. A deterministic PostgreSQL session advisory lock permits only one live
+TopDev run or retry execution at a time across processes. The lock is acquired before a new live
+run is created or an existing run is resumed, and it is released after the runner returns and its
+fetch evidence is committed. Its dedicated connection has no open transaction during HTTP work.
+Fixture runs never acquire this lease. Policy values above one for
+`maximum_concurrent_requests` remain valid metadata, but the V1 source-wide lease makes effective
+live concurrency one.
+
+After acquiring the lease, the worker reads the source's latest persisted fetch timestamp and waits
+any remaining snapshotted minimum interval before its first network request. The transport retains
+the same interval between subsequent requests. A policy wrapper enforces the total actual-request
+budget across discovery pages, detail first attempts, and retries. Live planning requires
+`requested_limit + 1 <= maximum_requests_per_run`, reserves `requested_limit` detail slots, and
+gives discovery only the remainder. Once retry attempts exhaust the budget, all remaining pending
+tasks are terminalized together with one stable `policy_request_budget_exhausted` error and no
+invented fetch event.
+
+The urllib transport disables automatic redirects and follows at most three redirects manually.
+Before each redirected request it requires HTTPS, one of the two TopDev hosts, no user-info,
+fragment, or non-default port, and a path allowed by both the snapshotted approved and blocked
+rules. Relative locations are resolved before validation; loops, downgrade, cross-host,
+unapproved, and blocked redirects fail before the target is contacted. The original requested URL
+and final validated resolved URL are persisted with safe final-response headers. The curl fallback
+does not follow redirects. Neither transport performs login, CAPTCHA bypass, proxy rotation, or 403
+retry. Nothing schedules live mode automatically.
 
 ## Run and task lifecycle
 
@@ -128,10 +149,15 @@ production code never sleeps inside a test or transaction.
 
 `retry-run` resumes due tasks only for an existing `running` crawl run. It does not reopen a
 terminal run. It reconstructs behavior from the immutable policy snapshot in
-`crawl_runs.configuration_json`, not current mutable limits or retention values. Live continuation
-also rechecks current enablement, approval, and newly blocked paths and rejects unauthorized
-continuation. `requeue-stale` changes stale `running` tasks to `pending` when attempts remain and to
-`failed` when exhausted. Terminal runs are excluded from recovery.
+`crawl_runs.configuration_json`, not current mutable limits or retention values. New runs store a
+canonical policy-execution hash covering policy version, interval, request and concurrency limits,
+approved/blocked paths, both retention values, and both storage permissions. Live continuation
+requires an enabled source, approved original and current policy reviews, an equal current
+execution hash, and every pending/running URL to remain allowed by both policies. Any behavioral
+policy change requires a new crawl run; an equivalent replacement policy row may continue. Fixture
+retry uses its fixture snapshot without live authorization. `requeue-stale` changes stale `running`
+tasks to `pending` when attempts remain and to `failed` when exhausted. Terminal runs are excluded
+from recovery.
 
 A fetch failure never marks a posting inactive.
 
@@ -222,7 +248,8 @@ configuration rejection, 4 all detail tasks failed, and 5 unexpected internal fa
 ## Known limitations
 
 - Only TopDev is registered; there is no second source adapter.
-- There is no scheduler, queue, distributed coordinator, or automatic live crawling.
+- There is no scheduler, queue, or automatic live crawling. The advisory lease is only a
+  conservative cross-process live-execution guard, not a scheduler or distributed work queue.
 - Object storage and retention deletion/archive execution are not provisioned.
 - `retry-run` resumes running runs; it does not reopen terminal runs.
 - No LLM extraction, embeddings, proxy rotation, login, or CAPTCHA handling exists.

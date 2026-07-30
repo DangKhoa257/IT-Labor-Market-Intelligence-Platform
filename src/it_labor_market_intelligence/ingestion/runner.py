@@ -140,7 +140,7 @@ class RunConfiguration:
     def safe_configuration_json(self) -> dict[str, JsonValue]:
         """Return non-secret operator settings suitable for JSONB."""
 
-        return {
+        configuration: dict[str, JsonValue] = {
             "source_slug": self.source_slug,
             "discovery_url": self.discovery_url,
             "mode": self.mode,
@@ -159,6 +159,27 @@ class RunConfiguration:
             "parser_version": self.parser_version,
             "record_schema_version": self.record_schema_version,
         }
+        configuration["policy_execution_hash"] = self.policy_execution_hash()
+        return configuration
+
+    def policy_execution_contract(self) -> dict[str, JsonValue]:
+        """Return exactly the behavior-affecting source policy fields."""
+
+        return {
+            "policy_version": self.policy_version,
+            "minimum_request_interval_seconds": self.minimum_request_interval_seconds,
+            "maximum_requests_per_run": self.maximum_requests_per_run,
+            "maximum_concurrent_requests": self.maximum_concurrent_requests,
+            "approved_paths": list(self.approved_paths),
+            "blocked_paths": list(self.blocked_paths),
+            "raw_retention_days": self.raw_retention_days,
+            "description_retention_days": self.description_retention_days,
+            "allow_raw_storage": self.allow_raw_storage,
+            "allow_description_storage": self.allow_description_storage,
+        }
+
+    def policy_execution_hash(self) -> str:
+        return direct_payload_sha256(cast(dict[str, Any], self.policy_execution_contract()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,8 +408,7 @@ class PolicyEnforcingTransport:
         self._lock = Lock()
 
     def __call__(self, url: str) -> FetchResult:
-        if not url_allowed_by_policy(url, self._approved_paths, self._blocked_paths):
-            raise PolicyViolationError("requested URL is blocked or not approved by source policy")
+        self._validate_url(url)
         with self._lock:
             if self._request_count >= self._maximum_requests:
                 raise PolicyViolationError("source policy maximum request count was reached")
@@ -401,6 +421,19 @@ class PolicyEnforcingTransport:
         finally:
             with self._lock:
                 self._active_count -= 1
+
+    def validate_redirect_target(self, url: str) -> None:
+        """Validate and reserve one policy request slot for a redirect target."""
+
+        self._validate_url(url)
+        with self._lock:
+            if self._request_count >= self._maximum_requests:
+                raise PolicyViolationError("source policy maximum request count was reached")
+            self._request_count += 1
+
+    def _validate_url(self, url: str) -> None:
+        if not url_allowed_by_policy(url, self._approved_paths, self._blocked_paths):
+            raise PolicyViolationError("requested URL is blocked or not approved by source policy")
 
 
 class RunnerStore(Protocol):
@@ -469,6 +502,10 @@ class RunnerStore(Protocol):
     def skip_pending_tasks(self, run_id: UUID, finished_at: datetime) -> int: ...
 
     def has_pending_tasks(self, run_id: UUID) -> bool: ...
+
+    def request_attempt_count(self, run_id: UUID) -> int: ...
+
+    def exhaust_pending_tasks_for_budget(self, run_id: UUID, finished_at: datetime) -> int: ...
 
     def finalize_run(self, run_id: UUID, finished_at: datetime) -> RunResult: ...
 
@@ -942,6 +979,54 @@ class PostgreSQLRunnerStore:
                 ).scalar_one()
             )
 
+    def request_attempt_count(self, run_id: UUID) -> int:
+        with self._begin() as connection:
+            return int(
+                connection.scalar(
+                    sa.text(
+                        "SELECT count(*) FROM ingestion.fetch_events WHERE crawl_run_id=:run_id"
+                    ),
+                    {"run_id": run_id},
+                )
+                or 0
+            )
+
+    def exhaust_pending_tasks_for_budget(self, run_id: UUID, finished_at: datetime) -> int:
+        """Terminalize all remaining work once without inventing fetch attempts."""
+
+        with self._begin() as connection:
+            exhausted = connection.execute(
+                sa.text(
+                    """
+                    UPDATE ingestion.crawl_tasks AS task
+                    SET status='failed', scheduled_for=NULL,
+                        started_at=COALESCE(task.started_at, :finished_at),
+                        finished_at=:finished_at, updated_at=:finished_at
+                    FROM ingestion.crawl_runs AS run
+                    WHERE task.crawl_run_id=run.id AND run.id=:run_id
+                      AND run.status='running' AND task.status='pending'
+                    RETURNING task.id
+                    """
+                ),
+                {"run_id": run_id, "finished_at": finished_at},
+            ).all()
+            if exhausted:
+                self._insert_error(
+                    connection,
+                    run_id,
+                    CrawlErrorEvidence(
+                        stage="policy",
+                        category="policy_blocked",
+                        message="source policy request budget exhausted",
+                        retryable=False,
+                        task_id=int(exhausted[0][0]),
+                        error_code="policy_request_budget_exhausted",
+                        details={"terminalized_task_count": len(exhausted)},
+                    ),
+                    finished_at,
+                )
+            return len(exhausted)
+
     def finalize_run(self, run_id: UUID, finished_at: datetime) -> RunResult:
         with self._begin() as connection:
             connection.execute(
@@ -1194,7 +1279,15 @@ class IngestionRunner:
         discovery_task_id = self._store.discovery_task_id(run_id)
         self._discard_observed_attempts()
         try:
-            urls = self._adapter.discover_job_urls(self._configuration.requested_limit)
+            discovery_budget = (
+                self._configuration.maximum_requests_per_run - self._configuration.requested_limit
+                if self._configuration.mode == "live"
+                else None
+            )
+            urls = self._adapter.discover_job_urls(
+                self._configuration.requested_limit,
+                request_budget=discovery_budget,
+            )
         except Exception as error:
             self._persist_discovery_attempts(run_id, discovery_task_id)
             evidence = CrawlErrorEvidence(
@@ -1209,9 +1302,33 @@ class IngestionRunner:
             self._store.fail_discovery(run_id, discovery_task_id, evidence, self._aware_now())
             return self._store.finalize_run(run_id, self._aware_now())
 
-        self._persist_discovery_attempts(run_id, discovery_task_id)
+        discovery_attempts = self._persist_discovery_attempts(run_id, discovery_task_id)
+        if not urls:
+            evidence = CrawlErrorEvidence(
+                stage="policy" if self._configuration.mode == "live" else "discovery",
+                category=(
+                    "policy_blocked" if self._configuration.mode == "live" else "invalid_content"
+                ),
+                message="no job URL discovered within the allowed discovery request budget",
+                retryable=False,
+                task_id=discovery_task_id,
+                url=self._configuration.discovery_url,
+                error_code="policy_discovery_budget_exhausted",
+            )
+            self._store.fail_discovery(run_id, discovery_task_id, evidence, self._aware_now())
+            return self._store.finalize_run(run_id, self._aware_now())
         try:
             planned_tasks = self._plan_tasks(urls)
+            if self._configuration.mode == "live":
+                available_first_attempts = max(
+                    0,
+                    self._configuration.maximum_requests_per_run - discovery_attempts,
+                )
+                planned_tasks = planned_tasks[:available_first_attempts]
+            if not planned_tasks:
+                raise PolicyViolationError(
+                    "no detail task fits within the source policy request budget"
+                )
         except Exception as error:
             evidence = CrawlErrorEvidence(
                 stage="discovery",
@@ -1232,6 +1349,13 @@ class IngestionRunner:
         """Process currently due tasks for an already-created running crawl run."""
 
         while True:
+            if (
+                self._configuration.mode == "live"
+                and self._store.request_attempt_count(run_id)
+                >= self._configuration.maximum_requests_per_run
+            ):
+                self._store.exhaust_pending_tasks_for_budget(run_id, self._aware_now())
+                break
             task = self._store.claim_task(run_id)
             if task is None:
                 break
@@ -1451,10 +1575,11 @@ class IngestionRunner:
             mime_type=page.content_type,
         )
 
-    def _persist_discovery_attempts(self, run_id: UUID, task_id: int) -> None:
+    def _persist_discovery_attempts(self, run_id: UUID, task_id: int) -> int:
         if self._transport_observer is None:
-            return
-        for number, attempt in enumerate(self._transport_observer.drain_attempts(), start=1):
+            return 0
+        attempts = self._transport_observer.drain_attempts()
+        for number, attempt in enumerate(attempts, start=1):
             if attempt.response is None:
                 outcome: FetchOutcome = (
                     "timeout" if isinstance(attempt.error, TimeoutError) else "network_error"
@@ -1509,6 +1634,7 @@ class IngestionRunner:
                     ),
                     attempt.occurred_at,
                 )
+        return len(attempts)
 
     def _validate_record(self, task: ClaimedTask, record: SourceRawJobRecord) -> None:
         if record.source != self._configuration.source_slug:

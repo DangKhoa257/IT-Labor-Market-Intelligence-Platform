@@ -42,7 +42,8 @@ _CLAIM_DUE_TASK_SQL = sa.text(
           AND task.status = 'pending'
           AND task.attempt_count < task.max_attempts
           AND (task.scheduled_for IS NULL OR task.scheduled_for <= now())
-        ORDER BY task.priority DESC, task.id
+        ORDER BY CASE WHEN task.attempt_count = 0 THEN 0 ELSE 1 END,
+                 task.priority DESC, task.id
         FOR UPDATE OF task SKIP LOCKED
         LIMIT 1
     )

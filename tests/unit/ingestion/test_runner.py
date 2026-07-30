@@ -74,7 +74,10 @@ class ScriptedAdapter:
         self._transport = transport
         self._extraction_errors = dict(extraction_errors or {})
 
-    def discover_job_urls(self, limit: int = 30) -> Sequence[str]:
+    def discover_job_urls(
+        self, limit: int = 30, *, request_budget: int | None = None
+    ) -> Sequence[str]:
+        del request_budget
         return self._urls[:limit]
 
     def fetch_job_detail(self, url: str) -> FetchResult:
@@ -251,9 +254,15 @@ class MemoryStore:
         self.errors.append((run_id, error))
 
     def claim_task(self, run_id: UUID) -> ClaimedTask | None:
-        for task in self.tasks:
-            if task.run_id != run_id or task.kind != "detail_page" or task.status != "pending":
-                continue
+        candidates = sorted(
+            (
+                task
+                for task in self.tasks
+                if task.run_id == run_id and task.kind == "detail_page" and task.status == "pending"
+            ),
+            key=lambda task: (task.attempt_count > 0, task.id),
+        )
+        for task in candidates:
             task.status = "running"
             task.attempt_count += 1
             task.started_at = NOW
@@ -352,6 +361,31 @@ class MemoryStore:
             and task.status in {"pending", "running"}
             for task in self.tasks
         )
+
+    def request_attempt_count(self, run_id: UUID) -> int:
+        return sum(item["run_id"] == run_id for item in self.fetches)
+
+    def exhaust_pending_tasks_for_budget(self, run_id: UUID, finished_at: datetime) -> int:
+        del finished_at
+        exhausted = 0
+        for task in self.tasks:
+            if task.run_id == run_id and task.kind == "detail_page" and task.status == "pending":
+                task.status = "failed"
+                exhausted += 1
+        if exhausted:
+            self.errors.append(
+                (
+                    run_id,
+                    CrawlErrorEvidence(
+                        stage="policy",
+                        category="policy_blocked",
+                        message="source policy request budget exhausted",
+                        retryable=False,
+                        error_code="policy_request_budget_exhausted",
+                    ),
+                )
+            )
+        return exhausted
 
     def finalize_run(self, run_id: UUID, finished_at: datetime) -> RunResult:
         del finished_at

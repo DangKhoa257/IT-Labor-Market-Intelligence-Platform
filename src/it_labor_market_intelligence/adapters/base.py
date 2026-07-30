@@ -73,7 +73,9 @@ class SourceAdapter(ABC):
     """Interface implemented by each separately approved source adapter."""
 
     @abstractmethod
-    def discover_job_urls(self, limit: int = 30) -> tuple[str, ...]:
+    def discover_job_urls(
+        self, limit: int = 30, *, request_budget: int | None = None
+    ) -> tuple[str, ...]:
         """Discover at most ``limit`` unique public job-detail URLs."""
 
     @abstractmethod

@@ -89,10 +89,24 @@ python -m it_labor_market_intelligence.ingestion.cli run --source topdev --mode 
 ```
 
 The limit must be from 1 through the active policy maximum. Live mode uses public GET requests and
-the resolved policy interval. Blocked paths override approved paths; discovery and each detail URL
-must be approved. The worker counts actual requests across retry invocations and never exceeds the
-approved request or concurrency limits. It has no object-storage backend, proxy rotation, login, or
-CAPTCHA bypass, and HTTP 403 is not retried.
+the resolved policy interval. It also requires room for one discovery attempt, so the live
+preflight is `limit + 1 <= maximum_requests_per_run`. Discovery receives only the unreserved
+request budget; the requested detail first attempts keep their reserved slots, while unused
+discovery capacity remains available to retries. Blocked paths override approved paths; discovery,
+each detail URL, and every redirect target must be approved.
+
+Only one live TopDev run or retry can execute at a time across processes. A PostgreSQL session
+advisory lease rejects a competing execution before transport work (and before creating a new crawl
+run). After taking the lease, the worker waits any remaining source-wide interval since the last
+persisted fetch. The lease is released after execution evidence commits, including on exceptions.
+Policy concurrency values above one are retained as metadata, but V1 deliberately executes live
+TopDev work at effective concurrency one. Fixture runs are unaffected.
+
+Urllib follows no automatic redirects: it manually validates at most three HTTPS redirects before
+each request, accepts only `topdev.vn` and `www.topdev.vn`, and rejects loops, downgrade, user-info,
+fragments, non-default ports, blocked paths, and unapproved paths. Curl does not follow redirects.
+The worker has no object-storage backend, proxy rotation, login, or CAPTCHA bypass, and HTTP 403 is
+not retried.
 
 ## Inspect a run
 
@@ -136,9 +150,13 @@ connection errors, HTTP 408, 425, 429, 500, 502, 503, and 504 are retryable. Inv
 401, 403, 404, 410, access blocking, parsing failures, and evidence/schema rejection are not.
 `Retry-After` is honored only up to 300 seconds.
 
-Retry execution uses the original `crawl_runs.configuration_json` policy snapshot. Changes to
-retention, storage permissions, interval, or limits do not silently alter an existing run. A live
-retry is rejected if the source is disabled, approval is revoked, or a new blocked path applies.
+Retry execution uses the original `crawl_runs.configuration_json` policy snapshot and its canonical
+execution hash. A live retry requires the source to remain enabled, both original and current
+reviews to remain approved, all pending URLs to remain allowed, and the current policy's complete
+execution hash to equal the snapshot. Any change to policy version, interval, request count,
+concurrency, approved/blocked paths, retention, or storage permissions requires a new live crawl
+run. An equivalent replacement policy row may continue; fixture retries do not require live
+authorization.
 
 Recover tasks whose worker lease became stale:
 
@@ -187,5 +205,6 @@ rewrite reviewed policies or delete prior evidence.
 ## Known limitations
 
 There is no scheduler, distributed queue, automatic live crawling, provisioned object storage, or
-retention deletion worker. The ingestion result remains source evidence only. Canonical/core import,
-history, quality, analytics, serving, and API population are outside this phase.
+retention deletion worker. The advisory lease is a live safety guard, not a scheduler. The
+ingestion result remains source evidence only. Canonical/core import, history, quality, analytics,
+serving, and API population are outside this phase.
