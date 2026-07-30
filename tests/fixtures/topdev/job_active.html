@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <!-- EXAMPLE_NOT_REAL_DATA: synthetic JSON-LD for deterministic tests. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        "title": "Fixture Platform Engineer",
+        "description": "<p>EXAMPLE_NOT_REAL_DATA Build deterministic Python services.</p>",
+        "industry": "Information Technology",
+        "datePosted": "2026-07-01",
+        "validThrough": "2099-12-31",
+        "employmentType": "FULL_TIME",
+        "skills": ["Python", "PostgreSQL"],
+        "hiringOrganization": {"@type": "Organization", "name": "EXAMPLE_NOT_REAL_DATA Co"},
+        "jobLocation": {
+          "@type": "Place",
+          "address": {"@type": "PostalAddress", "addressLocality": "Ho Chi Minh City"}
+        },
+        "baseSalary": {
+          "@type": "MonetaryAmount",
+          "currency": "USD",
+          "value": {"@type": "QuantitativeValue", "minValue": 1500, "maxValue": 2500, "unitText": "MONTH"}
+        }
+      }
+    </script>
+  </body>
+</html>

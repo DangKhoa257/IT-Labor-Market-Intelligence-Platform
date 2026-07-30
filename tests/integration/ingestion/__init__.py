@@ -1,0 +1,1 @@
+"""PostgreSQL ingestion integration tests."""

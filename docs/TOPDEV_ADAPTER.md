@@ -1,5 +1,22 @@
 # TopDev Pilot Adapter
 
+## Data Pipeline V1 boundary
+
+`TopDevAdapter` is the source-specific edge of the Data Pipeline V1 worker. It owns TopDev URL
+scope, sitemap/listing discovery, public GET semantics, JSON-LD `JobPosting` extraction, contact
+redaction, and closed-state evidence. The generic ingestion runner owns database lifecycle,
+idempotency, retries, raw evidence decisions, extraction lineage, and terminal counters.
+
+Production URLs can be paired with `FixtureTransport` for deterministic repository fixtures. A
+missing fixture mapping never falls back to the network. Live transport is opt-in and is admitted
+only after explicit source enablement and approval of the current policy. HTTP 403, blocked access,
+invalid source evidence, and schema rejection are not retried.
+
+When description storage is disabled, the adapter may parse it in memory but persists
+`description_raw=null` and `description_storage_suppressed=true`. Direct-payload hashes use the
+versioned canonical JSON contract described in
+[DATA_PIPELINE_V1_INGESTION.md](DATA_PIPELINE_V1_INGESTION.md), not Python object rendering.
+
 ## Scope
 
 `TopDevAdapter` is the first bounded source adapter. It reads public sitemap and job-detail responses,
@@ -78,3 +95,8 @@ Each line of `datasets/processed/topdev_pilot.jsonl` contains two objects:
 
 Raw response pages are not written to disk by the pilot. The processed JSONL is internal pilot data
 and is ignored by Git according to the repository dataset rules.
+
+The earlier offline pilot output remains separate from the ingestion worker. Data Pipeline V1
+persists database evidence through `ingestion.extracted_records` and stops before canonical/core
+import. It does not schedule live TopDev access, provision object storage, or execute retention
+deletion.

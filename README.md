@@ -98,3 +98,18 @@ schedule, back up, restore, archive, delete, or partition data. Use
 PostgreSQL.
 
 Run checks with `python -m pytest`, `python -m ruff check .`, and `python -m ruff format --check .`. See [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md), [API_REFERENCE.md](docs/API_REFERENCE.md), and [DATA_IMPORT_RUNBOOK.md](docs/DATA_IMPORT_RUNBOOK.md).
+
+## Data Pipeline V1 ingestion
+
+The repository now includes a source-independent ingestion worker with a bounded TopDev adapter.
+Fixture mode is the default and cannot access the network. Live mode is manual and requires an
+explicitly enabled source plus a currently approved policy; nothing schedules it automatically.
+
+The worker registers parser versions, plans and claims idempotent tasks in short transactions,
+persists fetch and extraction lineage, deduplicates raw evidence by SHA-256, sanitizes errors, and
+derives terminal counters from PostgreSQL. It stops at `ingestion.extracted_records`: no canonical,
+history, quality, analytics, serving, or API data is populated.
+
+See [Data Pipeline V1 ingestion](docs/DATA_PIPELINE_V1_INGESTION.md), the
+[TopDev ingestion runbook](docs/TOPDEV_INGESTION_RUNBOOK.md), and the
+[TopDev adapter boundary](docs/TOPDEV_ADAPTER.md).

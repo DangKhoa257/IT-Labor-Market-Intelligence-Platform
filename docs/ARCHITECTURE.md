@@ -1,5 +1,28 @@
 # Architecture
 
+## Implemented Data Pipeline V1 ingestion boundary
+
+The implemented ingestion path separates source behavior from persistence:
+
+```text
+TopDevAdapter -> IngestionRunner -> PostgreSQLRunnerStore -> ingestion.*
+```
+
+The TopDev adapter validates source URLs, discovers bounded public listings, fetches through an
+injected transport, and extracts direct JSON-LD evidence. The runner is source-independent: it owns
+task lifecycle, retry policy, raw SHA-256 identity, extraction persistence, safe errors, and
+database-derived counters. Repository methods enforce source lineage and use short transactions;
+claims commit before any transport call, and parsing also occurs outside database locks.
+
+The complete evidence chain is `sources -> source_policies -> parser_versions -> crawl_runs ->
+crawl_tasks -> fetch_events -> raw_objects -> extraction_runs -> extracted_records`, with
+`crawl_errors` attached to the run/task/fetch context. Fixture, inline, suppressed, and external raw
+storage are explicit decisions. External storage is a contract only: this phase provisions no
+object store. Retention expiry is metadata and no deletion worker exists.
+
+This phase ends at `ingestion.extracted_records`. It does not write canonical/core, history,
+quality, analytics, serving, or API data. It also adds no scheduler or automatic live crawling.
+
 **Phạm vi:** kiến trúc mục tiêu; Phase 0 chỉ tạo hợp đồng và tài liệu, chưa triển khai service.
 
 ## Luồng dữ liệu
