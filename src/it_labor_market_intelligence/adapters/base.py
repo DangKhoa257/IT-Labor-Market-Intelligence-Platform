@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
@@ -21,6 +22,7 @@ class FetchResult:
     body: bytes
     fetched_at: datetime
     content_type: str | None = None
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +73,9 @@ class SourceAdapter(ABC):
     """Interface implemented by each separately approved source adapter."""
 
     @abstractmethod
-    def discover_job_urls(self, limit: int = 30) -> tuple[str, ...]:
+    def discover_job_urls(
+        self, limit: int = 30, *, request_budget: int | None = None
+    ) -> tuple[str, ...]:
         """Discover at most ``limit`` unique public job-detail URLs."""
 
     @abstractmethod

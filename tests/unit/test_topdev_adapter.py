@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import shutil
+import subprocess
+import urllib.request
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
+from email.message import Message
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
 from it_labor_market_intelligence.adapters import FetchResult, TopDevAdapter
-from it_labor_market_intelligence.adapters.topdev import TOPDEV_IT_LISTING, extract_job_id
+from it_labor_market_intelligence.adapters.topdev import (
+    TOPDEV_IT_LISTING,
+    PoliteCurlTransport,
+    PoliteUrllibTransport,
+    extract_job_id,
+)
+from it_labor_market_intelligence.ingestion.runner import url_allowed_by_policy
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPOSITORY_ROOT / "tests" / "fixtures" / "source_verification" / "topdev"
@@ -292,3 +304,265 @@ def test_missing_required_json_ld_fields_rejects_record() -> None:
     page = _page("job_2121360.json", "2121360", title=None)
     with pytest.raises(ValueError, match="Required title/description missing"):
         TopDevAdapter().extract_raw_record(page)
+
+
+class _MockHTTPResponse:
+    def __init__(
+        self,
+        url: str,
+        status: int,
+        *,
+        headers: Mapping[str, str] | None = None,
+        body: bytes = b"body",
+    ) -> None:
+        self._url = url
+        self.status = status
+        self.headers = dict(headers or {})
+        self._body = body
+        self.closed = False
+
+    def geturl(self) -> str:
+        return self._url
+
+    def read(self) -> bytes:
+        return self._body
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _MockOpener:
+    def __init__(self, responses: Mapping[str, _MockHTTPResponse | HTTPError]) -> None:
+        self.responses = dict(responses)
+        self.calls: list[str] = []
+
+    def open(self, request: urllib.request.Request, timeout: int) -> _MockHTTPResponse:
+        del timeout
+        url = str(request.full_url)
+        self.calls.append(url)
+        response = self.responses[url]
+        if isinstance(response, HTTPError):
+            raise response
+        return response
+
+
+def _urllib_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    opener: _MockOpener,
+) -> PoliteUrllibTransport:
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *args: opener)
+    transport = PoliteUrllibTransport(minimum_interval_seconds=0)
+
+    def validate_path(url: str) -> None:
+        if not url_allowed_by_policy(
+            url,
+            ("/viec-lam/*",),
+            ("/viec-lam/blocked/*",),
+        ):
+            raise ValueError("redirect path rejected")
+
+    transport.set_redirect_validator(validate_path)
+    return transport
+
+
+def test_urllib_transport_exposes_only_safe_http_error_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = Message()
+    headers["Content-Type"] = "text/html"
+    headers["ETag"] = '"fixture-etag"'
+    headers["Last-Modified"] = "Wed, 29 Jul 2026 10:00:00 GMT"
+    headers["Retry-After"] = "17"
+    headers["Set-Cookie"] = "session=SECRET"
+    error = HTTPError(
+        "https://topdev.vn/viec-lam/fixture-429",
+        429,
+        "rate limited",
+        headers,
+        BytesIO(b"rate limited"),
+    )
+
+    opener = _MockOpener({error.url: error})
+    response = _urllib_transport(monkeypatch, opener)(error.url)
+
+    assert response.status == 429
+    assert response.headers["ETag"] == '"fixture-etag"'
+    assert response.headers["Last-Modified"] == "Wed, 29 Jul 2026 10:00:00 GMT"
+    assert response.headers["Retry-After"] == "17"
+    assert "Set-Cookie" not in response.headers
+
+
+@pytest.mark.parametrize(
+    ("location", "final_url"),
+    [
+        (
+            "https://www.topdev.vn/viec-lam/approved-final-2",
+            "https://www.topdev.vn/viec-lam/approved-final-2",
+        ),
+        ("/viec-lam/approved-relative-3", "https://topdev.vn/viec-lam/approved-relative-3"),
+    ],
+    ids=("approved-www-host", "approved-relative"),
+)
+def test_urllib_transport_follows_only_validated_redirects(
+    monkeypatch: pytest.MonkeyPatch, location: str, final_url: str
+) -> None:
+    initial = "https://topdev.vn/viec-lam/approved-start-1"
+    opener = _MockOpener(
+        {
+            initial: _MockHTTPResponse(initial, 302, headers={"Location": location}),
+            final_url: _MockHTTPResponse(
+                final_url,
+                200,
+                headers={"ETag": '"redirect-final"', "Set-Cookie": "SECRET"},
+            ),
+        }
+    )
+
+    response = _urllib_transport(monkeypatch, opener)(initial)
+
+    assert opener.calls == [initial, final_url]
+    assert response.url == final_url
+    assert response.headers == {"ETag": '"redirect-final"'}
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://example.com/viec-lam/approved-2",
+        "http://topdev.vn/viec-lam/approved-2",
+        "https://topdev.vn/viec-lam/blocked/secret-2",
+        "https://topdev.vn/companies/unapproved-2",
+    ],
+    ids=("cross-host", "http-downgrade", "blocked-path", "unapproved-path"),
+)
+def test_urllib_transport_rejects_redirect_before_forbidden_target_call(
+    monkeypatch: pytest.MonkeyPatch, location: str
+) -> None:
+    initial = "https://topdev.vn/viec-lam/approved-start-1"
+    opener = _MockOpener({initial: _MockHTTPResponse(initial, 302, headers={"Location": location})})
+
+    with pytest.raises((ValueError, OSError)):
+        _urllib_transport(monkeypatch, opener)(initial)
+
+    assert opener.calls == [initial]
+    assert location not in opener.calls
+
+
+def test_urllib_transport_rejects_redirect_loop_without_second_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initial = "https://topdev.vn/viec-lam/approved-loop-1"
+    opener = _MockOpener({initial: _MockHTTPResponse(initial, 302, headers={"Location": initial})})
+
+    with pytest.raises(OSError, match="loop"):
+        _urllib_transport(monkeypatch, opener)(initial)
+
+    assert opener.calls == [initial]
+
+
+def test_urllib_transport_rejects_more_than_three_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    urls = [f"https://topdev.vn/viec-lam/approved-hop-{number}" for number in range(5)]
+    opener = _MockOpener(
+        {
+            url: _MockHTTPResponse(url, 302, headers={"Location": urls[index + 1]})
+            for index, url in enumerate(urls[:-1])
+        }
+    )
+
+    with pytest.raises(OSError, match="limit"):
+        _urllib_transport(monkeypatch, opener)(urls[0])
+
+    assert opener.calls == urls[:4]
+    assert urls[4] not in opener.calls
+
+
+def test_curl_transport_exposes_allowlisted_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _: "curl")
+    header_json = json.dumps(
+        {
+            "content-type": "text/html",
+            "etag": ['"curl-etag"'],
+            "last-modified": "Wed, 29 Jul 2026 11:00:00 GMT",
+            "retry-after": "23",
+            "x-csrf-token": "SECRET",
+        }
+    )
+    stdout = (
+        b"body\n__TOPDEV_PILOT_META__200\thttps://topdev.vn/viec-lam/curl-123"
+        + b"\ttext/html\t"
+        + header_json.encode()
+    )
+    completed = subprocess.CompletedProcess(["curl"], 0, stdout=stdout, stderr=b"")
+    commands: list[list[str]] = []
+
+    def run_curl(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        del kwargs
+        commands.append(command)
+        return completed
+
+    monkeypatch.setattr(subprocess, "run", run_curl)
+
+    response = PoliteCurlTransport(minimum_interval_seconds=0)(
+        "https://topdev.vn/viec-lam/curl-123"
+    )
+
+    assert response.headers == {
+        "content-type": "text/html",
+        "etag": '"curl-etag"',
+        "last-modified": "Wed, 29 Jul 2026 11:00:00 GMT",
+        "retry-after": "23",
+    }
+    assert "--location" not in commands[0]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "metadata", "expected_exception", "message"),
+    [
+        (28, b"000\thttps://topdev.vn/viec-lam/curl-123\t\t{}", TimeoutError, "timed out"),
+        (6, b"", OSError, "transport failed"),
+        (0, b"missing-fields", OSError, "metadata is malformed"),
+        (0, b"abc\thttps://topdev.vn/viec-lam/curl-123\ttext/html\t{}", OSError, "status"),
+        (0, b"000\thttps://topdev.vn/viec-lam/curl-123\ttext/html\t{}", OSError, "valid HTTP"),
+        (
+            0,
+            b"200\thttps://topdev.vn/viec-lam/curl-123\ttext/html\t{bad",
+            OSError,
+            "header metadata",
+        ),
+    ],
+    ids=(
+        "timeout-status-000",
+        "dns-connect-failure",
+        "malformed-metadata",
+        "malformed-status",
+        "status-000",
+        "malformed-header-json",
+    ),
+)
+def test_curl_transport_rejects_untrustworthy_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    metadata: bytes,
+    expected_exception: type[Exception],
+    message: str,
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _: "curl")
+    marker = b"\n__TOPDEV_PILOT_META__"
+    stdout = b"PRIVATE_BODY" + marker + metadata if metadata else b""
+    completed = subprocess.CompletedProcess(
+        ["curl"],
+        returncode,
+        stdout=stdout,
+        stderr=b"proxy=http://user:password@example.test token=SECRET",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed)
+
+    with pytest.raises(expected_exception, match=message) as error:
+        PoliteCurlTransport(minimum_interval_seconds=0)("https://topdev.vn/viec-lam/curl-123")
+
+    rendered = str(error.value)
+    assert "SECRET" not in rendered
+    assert "password" not in rendered
+    assert "PRIVATE_BODY" not in rendered

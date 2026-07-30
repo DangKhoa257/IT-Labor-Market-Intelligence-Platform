@@ -1,5 +1,34 @@
 # TopDev Pilot Adapter
 
+## Data Pipeline V1 boundary
+
+`TopDevAdapter` is the source-specific edge of the Data Pipeline V1 worker. It owns TopDev URL
+scope, sitemap/listing discovery, public GET semantics, JSON-LD `JobPosting` extraction, contact
+redaction, and closed-state evidence. The generic ingestion runner owns database lifecycle,
+idempotency, retries, raw evidence decisions, extraction lineage, and terminal counters.
+
+Production URLs can be paired with `FixtureTransport` for deterministic repository fixtures. A
+missing fixture mapping never falls back to the network. Live transport is opt-in and is admitted
+only after explicit source enablement and approval of the current policy. HTTP 403, blocked access,
+invalid source evidence, and schema rejection are not retried.
+
+The live transport receives the resolved policy minimum interval rather than assuming two seconds.
+Its response contract carries only allowlisted cache and retry metadata: content type/length, ETag,
+Last-Modified, Cache-Control, Retry-After, and Date. Cookie, Set-Cookie, authorization, CSRF,
+session, and unknown headers are discarded before ingestion persistence.
+
+Automatic redirects are disabled. Urllib resolves and validates at most three redirects before
+contacting each target: HTTPS only, `topdev.vn` or `www.topdev.vn`, default port, no user-info or
+fragment, no loop, and a path permitted by both approved and blocked policy rules. Curl never uses
+automatic redirect following. Invalid curl exit codes, status `000`, malformed metadata/status or
+headers, and invalid effective URLs become sanitized transport failures rather than `FetchResult`
+objects.
+
+When description storage is disabled, the adapter may parse it in memory but persists
+`description_raw=null` and `description_storage_suppressed=true`. Direct-payload hashes use the
+versioned canonical JSON contract described in
+[DATA_PIPELINE_V1_INGESTION.md](DATA_PIPELINE_V1_INGESTION.md), not Python object rendering.
+
 ## Scope
 
 `TopDevAdapter` is the first bounded source adapter. It reads public sitemap and job-detail responses,
@@ -22,8 +51,9 @@ All adapters implement `SourceAdapter`:
 - `detect_closed_state(page)` returns `active`, `expired`, or `unknown` from explicit evidence.
 
 The transport is injectable. Tests use in-memory responses; the default transport uses Python's
-standard library. A curl transport is available for Python runtimes built without HTTPS support; it
-uses the same identity, timeout, redirect cap, rate interval, and no-retry behavior.
+standard library. A curl transport is available for Python runtimes built without HTTPS support;
+it uses the same identity, timeout, URL restrictions, rate interval, and no-retry behavior, and
+returns redirect responses without following them.
 
 ## Discovery
 
@@ -78,3 +108,8 @@ Each line of `datasets/processed/topdev_pilot.jsonl` contains two objects:
 
 Raw response pages are not written to disk by the pilot. The processed JSONL is internal pilot data
 and is ignored by Git according to the repository dataset rules.
+
+The earlier offline pilot output remains separate from the ingestion worker. Data Pipeline V1
+persists database evidence through `ingestion.extracted_records` and stops before canonical/core
+import. It does not schedule live TopDev access, provision object storage, or execute retention
+deletion.

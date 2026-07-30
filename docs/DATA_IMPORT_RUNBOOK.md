@@ -1,5 +1,21 @@
 # Data Import Runbook
 
+## Boundary with Data Pipeline V1 ingestion
+
+The TopDev ingestion worker produces traceable source evidence through
+`ingestion.extracted_records`. It does not invoke the canonical importer and has no write path to
+`core`, `history`, `quality`, `analytics`, `serving`, or `api`. Treat ingestion completion and
+canonical import as separate operator-reviewed stages.
+
+Use `python -m it_labor_market_intelligence.ingestion.cli inspect-run --run-id <uuid>` to review a
+safe run summary before any future import decision. Source/bootstrap, fixture/live operation,
+parser versions, retry recovery, raw storage decisions, direct-payload hashing, and sanitized error
+handling are documented in [DATA_PIPELINE_V1_INGESTION.md](DATA_PIPELINE_V1_INGESTION.md) and
+[TOPDEV_INGESTION_RUNBOOK.md](TOPDEV_INGESTION_RUNBOOK.md).
+
+No scheduler connects these stages. No ingestion result automatically creates or updates canonical,
+history, quality, analytics, serving, or API records.
+
 Migration 007 records operational evidence separately from import execution. It does not alter
 the importer, add a scheduler, or perform retention deletion; see the operations runbooks for
 externally executed backup, restore, archive, retention, and health evidence.
