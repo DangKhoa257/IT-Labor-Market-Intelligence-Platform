@@ -9,6 +9,7 @@ import pytest
 from it_labor_market_intelligence.ingestion.adapters.topdev_registration import (
     BootstrapRepository,
     EnableRejected,
+    ParserVersionConflict,
     PolicyState,
     SourceState,
     TopDevRegistration,
@@ -33,6 +34,7 @@ class _Policy:
 class _Parser:
     version: str
     active: bool
+    schema_version: str = "source-raw-job-record.v1"
     retired_at: datetime | None = None
     configuration_hash: str | None = None
     git_commit_sha: str | None = None
@@ -56,11 +58,6 @@ class MemoryBootstrapRepository:
         assert source_id == SOURCE_ID
         return any(policy.reviewed for policy in self.policies)
 
-    def disable_source(self, source_id: UUID, at: datetime) -> None:
-        assert source_id == SOURCE_ID
-        assert at == NOW
-        self.source = SourceState(SOURCE_ID, False)
-
     def insert_default_policy(self, source_id: UUID, registration: TopDevRegistration) -> bool:
         assert source_id == SOURCE_ID
         if any(policy.version == registration.policy_version for policy in self.policies):
@@ -75,7 +72,19 @@ class MemoryBootstrapRepository:
         assert at == NOW
         if not any(policy.approved for policy in self.policies):
             return None
-        return PolicyState(POLICY_ID, 30, 30, True, True)
+        return PolicyState(
+            id=POLICY_ID,
+            policy_version="approved-v1",
+            minimum_request_interval_seconds=2.0,
+            maximum_requests_per_run=30,
+            maximum_concurrent_requests=1,
+            approved_paths=("/viec-lam/*",),
+            blocked_paths=(),
+            raw_retention_days=30,
+            description_retention_days=90,
+            allow_raw_storage=True,
+            allow_description_storage=True,
+        )
 
     def rotate_parser(
         self,
@@ -86,20 +95,29 @@ class MemoryBootstrapRepository:
         at: datetime,
     ) -> None:
         assert source_id == SOURCE_ID
-        for parser in self.parsers:
-            if parser.active and parser.version != registration.parser_version:
-                parser.active = False
-                parser.retired_at = at
         current = next(
             (item for item in self.parsers if item.version == registration.parser_version), None
         )
         if current is None:
-            current = _Parser(registration.parser_version, True)
+            current = _Parser(
+                registration.parser_version,
+                False,
+                schema_version=registration.schema_version,
+                configuration_hash=configuration_hash,
+                git_commit_sha=git_commit_sha,
+            )
             self.parsers.append(current)
+        elif (
+            current.schema_version != registration.schema_version
+            or current.configuration_hash != configuration_hash
+        ):
+            raise ParserVersionConflict("increment ADAPTER_VERSION")
+        for parser in self.parsers:
+            if parser.active and parser is not current:
+                parser.active = False
+                parser.retired_at = at
         current.active = True
         current.retired_at = None
-        current.configuration_hash = configuration_hash
-        current.git_commit_sha = git_commit_sha
 
     def enable_source(self, source_id: UUID, at: datetime) -> None:
         assert source_id == SOURCE_ID
@@ -155,14 +173,14 @@ def test_approved_policy_allows_explicit_enable() -> None:
     assert repository.source == SourceState(SOURCE_ID, True)
 
 
-def test_bootstrap_without_enable_disables_a_previously_enabled_source() -> None:
+def test_bootstrap_without_enable_preserves_a_previously_enabled_source() -> None:
     repository = MemoryBootstrapRepository()
     repository.source = SourceState(SOURCE_ID, True)
 
     result = register_topdev(repository, now=NOW)
 
-    assert result.source_enabled is False
-    assert repository.source == SourceState(SOURCE_ID, False)
+    assert result.source_enabled is True
+    assert repository.source == SourceState(SOURCE_ID, True)
 
 
 def test_parser_rotation_retires_previous_version_and_activates_target() -> None:
@@ -179,6 +197,39 @@ def test_parser_rotation_retires_previous_version_and_activates_target() -> None
     assert repository.parsers[1].configuration_hash == result.configuration_hash
     assert repository.parsers[1].git_commit_sha == "1234567"
     assert result.configuration_hash == TopDevRegistration().configuration_hash()
+
+
+def test_identical_parser_bootstrap_preserves_original_git_commit() -> None:
+    repository = MemoryBootstrapRepository()
+
+    first = register_topdev(repository, git_commit_sha="1111111", now=NOW)
+    second = register_topdev(repository, git_commit_sha="2222222", now=NOW)
+
+    assert first.configuration_hash == second.configuration_hash
+    assert len(repository.parsers) == 1
+    assert repository.parsers[0].git_commit_sha == "1111111"
+
+
+def test_same_parser_version_with_different_configuration_is_rejected() -> None:
+    repository = MemoryBootstrapRepository()
+    register_topdev(repository, now=NOW)
+    changed = TopDevRegistration(schema_version="source-raw-job-record.v2")
+
+    with pytest.raises(ParserVersionConflict, match="increment ADAPTER_VERSION"):
+        register_topdev(repository, registration=changed, now=NOW)
+
+
+def test_bumped_parser_version_inserts_before_retiring_old_identity() -> None:
+    repository = MemoryBootstrapRepository()
+    register_topdev(repository, now=NOW)
+
+    bumped = TopDevRegistration(parser_version="topdev.v2")
+    register_topdev(repository, registration=bumped, git_commit_sha="2222222", now=NOW)
+
+    assert [(parser.version, parser.active) for parser in repository.parsers] == [
+        ("topdev.v1", False),
+        ("topdev.v2", True),
+    ]
 
 
 def test_memory_repository_satisfies_bootstrap_contract() -> None:

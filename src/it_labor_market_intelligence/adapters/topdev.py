@@ -39,6 +39,25 @@ _ACTIVE_APPLICATION_STATE = re.compile(
 _EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 _PHONE = re.compile(r"(?<!\d)(?:\+?84|0)(?:[ .-]?\d){8,10}(?!\d)")
 _VIETNAM_TIMEZONE = timezone(timedelta(hours=7), name="Asia/Ho_Chi_Minh")
+_SAFE_RESPONSE_HEADERS = frozenset(
+    {
+        "content-type",
+        "content-length",
+        "etag",
+        "last-modified",
+        "cache-control",
+        "retry-after",
+        "date",
+    }
+)
+
+
+def _safe_response_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    """Return only response metadata approved for ingestion persistence."""
+
+    return {
+        key: value for key, value in headers.items() if key.casefold() in _SAFE_RESPONSE_HEADERS
+    }
 
 
 class _JsonLdParser(HTMLParser):
@@ -107,20 +126,28 @@ class PoliteUrllibTransport:
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 body = response.read()
+                headers = _safe_response_headers(dict(response.headers.items()))
                 result = FetchResult(
                     url=response.geturl(),
                     status=response.status,
                     body=body,
                     fetched_at=datetime.now(UTC),
-                    content_type=response.headers.get("Content-Type"),
+                    content_type=headers.get("Content-Type") or headers.get("content-type"),
+                    headers=headers,
                 )
         except urllib.error.HTTPError as error:
+            headers = (
+                _safe_response_headers(dict(error.headers.items()))
+                if error.headers is not None
+                else {}
+            )
             result = FetchResult(
                 url=url,
                 status=error.code,
                 body=error.read(),
                 fetched_at=datetime.now(UTC),
-                content_type=error.headers.get("Content-Type"),
+                content_type=headers.get("Content-Type") or headers.get("content-type"),
+                headers=headers,
             )
         finally:
             self._last_request_at = time.monotonic()
@@ -157,7 +184,8 @@ class PoliteCurlTransport:
                     "--user-agent",
                     USER_AGENT,
                     "--write-out",
-                    marker.decode() + "%{http_code}\t%{url_effective}\t%{content_type}",
+                    marker.decode()
+                    + "%{http_code}\t%{url_effective}\t%{content_type}\t%{header_json}",
                     url,
                 ],
                 check=False,
@@ -170,15 +198,30 @@ class PoliteCurlTransport:
             message = completed.stderr.decode("utf-8", errors="replace").strip()
             raise OSError(message or f"curl failed with exit code {completed.returncode}")
         body, metadata = completed.stdout.rsplit(marker, maxsplit=1)
-        status_text, effective_url, content_type = metadata.decode("utf-8", errors="replace").split(
-            "\t", maxsplit=2
-        )
+        status_text, effective_url, content_type, header_json = metadata.decode(
+            "utf-8", errors="replace"
+        ).split("\t", maxsplit=3)
+        try:
+            decoded_headers = json.loads(header_json)
+        except json.JSONDecodeError:
+            decoded_headers = {}
+        rendered_headers: dict[str, str] = {}
+        if isinstance(decoded_headers, dict):
+            for key, value in decoded_headers.items():
+                if not isinstance(key, str):
+                    continue
+                if isinstance(value, str):
+                    rendered_headers[key] = value
+                elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+                    rendered_headers[key] = ", ".join(value)
+        headers = _safe_response_headers(rendered_headers)
         return FetchResult(
             url=effective_url,
             status=int(status_text),
             body=body,
             fetched_at=datetime.now(UTC),
             content_type=content_type or None,
+            headers=headers,
         )
 
 

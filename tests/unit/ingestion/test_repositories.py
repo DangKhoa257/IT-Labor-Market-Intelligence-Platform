@@ -63,6 +63,8 @@ def test_upsert_raw_object_is_atomic_and_does_not_overwrite_first_location() -> 
     statement, parameters = connection_mock.execute.call_args.args
     sql = str(statement)
     assert "ON CONFLICT (sha256) DO UPDATE" in sql
+    assert "GREATEST(ingestion.raw_objects.expires_at, EXCLUDED.expires_at)" in sql
+    assert "ingestion.raw_objects.expires_at IS NULL" in sql
     assert "WHERE ingestion.raw_objects.byte_size = EXCLUDED.byte_size" in sql
     assert parameters["storage_provider"] == "filesystem"
     assert parameters["object_key"] == "tests/fixtures/topdev/job.html"

@@ -88,7 +88,11 @@ _UPSERT_RAW_OBJECT_SQL = (
             :expires_at
         )
         ON CONFLICT (sha256) DO UPDATE
-        SET sha256 = ingestion.raw_objects.sha256
+        SET expires_at = CASE
+                WHEN ingestion.raw_objects.expires_at IS NULL
+                  OR EXCLUDED.expires_at IS NULL THEN NULL
+                ELSE GREATEST(ingestion.raw_objects.expires_at, EXCLUDED.expires_at)
+            END
         WHERE ingestion.raw_objects.byte_size = EXCLUDED.byte_size
         RETURNING ingestion.raw_objects.id
         """
@@ -153,9 +157,9 @@ def upsert_raw_object(
 ) -> int:
     """Insert immutable raw metadata or return its globally deduplicated ID.
 
-    The conflict action is intentionally a no-op: the first storage decision
-    remains immutable.  Its ``WHERE`` clause also prevents a same-hash,
-    different-size value from being silently accepted.
+    Existing storage location metadata remains immutable. Retention is merged
+    to the safest effective expiry: later finite expiry wins and NULL remains
+    indefinite. The ``WHERE`` clause rejects a same-hash, different-size value.
     """
 
     _validate_raw_object_values(

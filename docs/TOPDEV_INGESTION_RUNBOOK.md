@@ -33,17 +33,21 @@ Register the source, policy template, and parser version without enabling live a
 python -m it_labor_market_intelligence.ingestion.cli bootstrap-topdev
 ```
 
-Bootstrap is idempotent. It leaves the source disabled unless `--enable` is supplied, does not
-overwrite a reviewed policy, and safely rotates the active parser only when registering a distinct
-version. Parser identity includes its version, schema version, deterministic configuration hash,
-and Git commit SHA when available.
+Bootstrap is idempotent. A newly registered source is disabled, while later bootstrap runs preserve
+the source's existing enablement. It does not overwrite a reviewed policy. Parser version, schema,
+configuration hash, and original Git commit are immutable; changing schema or configuration
+requires a new adapter version. A new version is inserted before the old active version is retired.
 
 Review policy state directly before enabling:
 
 ```sql
-SELECT s.slug, s.is_enabled, p.policy_version, p.is_current,
-       p.robots_status, p.terms_status, p.reviewed_at,
-       p.max_requests_per_run, p.raw_retention_days
+SELECT s.slug, s.is_enabled, p.policy_version,
+       p.robots_review_status, p.terms_review_status, p.reviewed_at,
+       p.minimum_request_interval_seconds, p.maximum_requests_per_run,
+       p.maximum_concurrent_requests, p.approved_paths, p.blocked_paths,
+       p.raw_retention_days, p.description_retention_days,
+       p.allow_raw_storage, p.allow_description_storage,
+       p.valid_from, p.valid_to
 FROM ingestion.sources AS s
 LEFT JOIN ingestion.source_policies AS p ON p.source_id = s.id
 WHERE s.slug = 'topdev'
@@ -57,7 +61,7 @@ python -m it_labor_market_intelligence.ingestion.cli bootstrap-topdev --enable
 ```
 
 Enablement is rejected unless the current policy is valid and both robots and terms statuses are
-`approved`. Running bootstrap later without `--enable` disables the source again by design.
+`approved`. Running bootstrap later without `--enable` preserves the current enabled state.
 
 ## Validate and run fixtures
 
@@ -85,8 +89,10 @@ python -m it_labor_market_intelligence.ingestion.cli run --source topdev --mode 
 ```
 
 The limit must be from 1 through the active policy maximum. Live mode uses public GET requests and
-the adapter rate limit. It has no object-storage backend, proxy rotation, login, or CAPTCHA bypass,
-and HTTP 403 is not retried.
+the resolved policy interval. Blocked paths override approved paths; discovery and each detail URL
+must be approved. The worker counts actual requests across retry invocations and never exceeds the
+approved request or concurrency limits. It has no object-storage backend, proxy rotation, login, or
+CAPTCHA bypass, and HTTP 403 is not retried.
 
 ## Inspect a run
 
@@ -130,6 +136,10 @@ connection errors, HTTP 408, 425, 429, 500, 502, 503, and 504 are retryable. Inv
 401, 403, 404, 410, access blocking, parsing failures, and evidence/schema rejection are not.
 `Retry-After` is honored only up to 300 seconds.
 
+Retry execution uses the original `crawl_runs.configuration_json` policy snapshot. Changes to
+retention, storage permissions, interval, or limits do not silently alter an existing run. A live
+retry is rejected if the source is disabled, approval is revoked, or a new blocked path applies.
+
 Recover tasks whose worker lease became stale:
 
 ```powershell
@@ -141,10 +151,14 @@ failed. Terminal crawl runs are never changed by recovery.
 
 ## Disable live access
 
-Bootstrap without the enable flag to return the source to its safe default:
+Disable live access explicitly in a short operator transaction:
 
-```powershell
-python -m it_labor_market_intelligence.ingestion.cli bootstrap-topdev
+```sql
+BEGIN;
+UPDATE ingestion.sources
+SET is_enabled=false, updated_at=now()
+WHERE slug='topdev';
+COMMIT;
 ```
 
 Confirm `ingestion.sources.is_enabled` is false before closing the change record. This does not

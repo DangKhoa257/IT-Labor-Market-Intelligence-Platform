@@ -15,7 +15,10 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
+from fnmatch import fnmatchcase
+from threading import Lock
 from typing import Any, Literal, Protocol, cast
+from urllib.parse import urlparse
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -23,7 +26,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from it_labor_market_intelligence.adapters.base import FetchResult, SourceRawJobRecord
 
-from .contracts import FixtureResponse, IngestionAdapter, JsonValue
+from .contracts import FetchTransport, FixtureResponse, IngestionAdapter, JsonValue
 from .errors import RetryDecision, retry_decision
 from .hashing import direct_payload_sha256
 from .raw_storage import (
@@ -96,7 +99,14 @@ class RunConfiguration:
     mode: Literal["fixture", "live"] = "fixture"
     run_type: Literal["scheduled", "manual", "backfill", "test"] = "test"
     trigger_type: Literal["manual", "scheduler", "github_actions", "api", "system", "test"] = "test"
+    policy_version: str = "unknown"
+    minimum_request_interval_seconds: float = 2.0
+    maximum_requests_per_run: int = 30
+    maximum_concurrent_requests: int = 1
+    approved_paths: tuple[str, ...] = ("/",)
+    blocked_paths: tuple[str, ...] = ()
     raw_retention_days: int | None = 30
+    description_retention_days: int | None = 90
     allow_raw_storage: bool = True
     allow_description_storage: bool = True
     fail_fast: bool = False
@@ -114,14 +124,35 @@ class RunConfiguration:
             raise ValueError("discovery_url must not be blank")
         if self.raw_retention_days is not None and self.raw_retention_days < 0:
             raise ValueError("raw_retention_days must not be negative")
+        if self.description_retention_days is not None and self.description_retention_days < 0:
+            raise ValueError("description_retention_days must not be negative")
+        if self.minimum_request_interval_seconds < 0:
+            raise ValueError("minimum_request_interval_seconds must not be negative")
+        if self.maximum_requests_per_run < 1:
+            raise ValueError("maximum_requests_per_run must be at least 1")
+        if self.maximum_concurrent_requests < 1:
+            raise ValueError("maximum_concurrent_requests must be at least 1")
+        if not self.policy_version.strip():
+            raise ValueError("policy_version must not be blank")
+        _validate_path_patterns(self.approved_paths, "approved_paths")
+        _validate_path_patterns(self.blocked_paths, "blocked_paths")
 
     def safe_configuration_json(self) -> dict[str, JsonValue]:
         """Return non-secret operator settings suitable for JSONB."""
 
         return {
             "source_slug": self.source_slug,
+            "discovery_url": self.discovery_url,
             "mode": self.mode,
             "requested_limit": self.requested_limit,
+            "policy_version": self.policy_version,
+            "minimum_request_interval_seconds": self.minimum_request_interval_seconds,
+            "maximum_requests_per_run": self.maximum_requests_per_run,
+            "maximum_concurrent_requests": self.maximum_concurrent_requests,
+            "approved_paths": list(self.approved_paths),
+            "blocked_paths": list(self.blocked_paths),
+            "raw_retention_days": self.raw_retention_days,
+            "description_retention_days": self.description_retention_days,
             "allow_raw_storage": self.allow_raw_storage,
             "allow_description_storage": self.allow_description_storage,
             "fail_fast": self.fail_fast,
@@ -225,7 +256,7 @@ class RunResult:
 @dataclass(frozen=True, slots=True)
 class TransportAttempt:
     requested_url: str
-    response: FixtureResponse | None
+    response: FetchResult | None
     error: Exception | None
     occurred_at: datetime
     fixture_key: str | None
@@ -272,12 +303,11 @@ class FixtureTransport:
         if isinstance(item, Exception):
             self._record(url, None, item)
             raise item
-        self._record(url, item, None)
-        # FixtureResponse intentionally has the exact FetchResult data shape;
-        # retaining the object also keeps safe response headers for persistence.
-        return cast(FetchResult, item)
+        response = item.as_fetch_result()
+        self._record(url, response, None)
+        return response
 
-    def _record(self, url: str, response: FixtureResponse | None, error: Exception | None) -> None:
+    def _record(self, url: str, response: FetchResult | None, error: Exception | None) -> None:
         occurred_at = response.fetched_at if response is not None else self._now()
         self._attempts.append(
             TransportAttempt(
@@ -299,6 +329,78 @@ class FixtureTransport:
         attempts = tuple(self._attempts)
         self._attempts.clear()
         return attempts
+
+
+class AttemptObserver(Protocol):
+    def drain_attempts(self) -> tuple[TransportAttempt, ...]: ...
+
+
+class ObservedTransport:
+    """Record transport attempts without changing response data or retry behavior."""
+
+    def __init__(self, transport: FetchTransport, *, now: Callable[[], datetime]) -> None:
+        self._transport = transport
+        self._now = now
+        self._attempts: list[TransportAttempt] = []
+
+    def __call__(self, url: str) -> FetchResult:
+        try:
+            response = self._transport(url)
+        except Exception as error:
+            self._attempts.append(TransportAttempt(url, None, error, self._now(), None))
+            raise
+        self._attempts.append(TransportAttempt(url, response, None, response.fetched_at, None))
+        return response
+
+    def drain_attempts(self) -> tuple[TransportAttempt, ...]:
+        attempts = tuple(self._attempts)
+        self._attempts.clear()
+        return attempts
+
+
+class PolicyViolationError(ValueError):
+    """Raised before transport work when the snapshotted live policy forbids it."""
+
+
+class PolicyEnforcingTransport:
+    """Enforce URL, request-count, and concurrency limits around live transport."""
+
+    def __init__(
+        self,
+        transport: FetchTransport,
+        *,
+        approved_paths: Sequence[str],
+        blocked_paths: Sequence[str],
+        maximum_requests: int,
+        maximum_concurrent_requests: int,
+        initial_request_count: int = 0,
+    ) -> None:
+        self._transport = transport
+        self._approved_paths = tuple(approved_paths)
+        self._blocked_paths = tuple(blocked_paths)
+        self._maximum_requests = maximum_requests
+        self._maximum_concurrent_requests = maximum_concurrent_requests
+        if not 0 <= initial_request_count <= maximum_requests:
+            raise ValueError("initial_request_count must fit within the request limit")
+        self._request_count = initial_request_count
+        self._active_count = 0
+        self._lock = Lock()
+
+    def __call__(self, url: str) -> FetchResult:
+        if not url_allowed_by_policy(url, self._approved_paths, self._blocked_paths):
+            raise PolicyViolationError("requested URL is blocked or not approved by source policy")
+        with self._lock:
+            if self._request_count >= self._maximum_requests:
+                raise PolicyViolationError("source policy maximum request count was reached")
+            if self._active_count >= self._maximum_concurrent_requests:
+                raise PolicyViolationError("source policy maximum concurrency was reached")
+            self._request_count += 1
+            self._active_count += 1
+        try:
+            return self._transport(url)
+        finally:
+            with self._lock:
+                self._active_count -= 1
 
 
 class RunnerStore(Protocol):
@@ -760,7 +862,9 @@ class PostgreSQLRunnerStore:
                 sa.text(
                     """
                     UPDATE ingestion.crawl_tasks
-                    SET status='succeeded', finished_at=:finished_at, updated_at=:finished_at
+                    SET status='succeeded',
+                        finished_at=GREATEST(:finished_at, started_at),
+                        updated_at=GREATEST(:finished_at, started_at)
                     WHERE id=:task_id AND status='running'
                     """
                 ),
@@ -787,7 +891,8 @@ class PostgreSQLRunnerStore:
                     """
                     UPDATE ingestion.crawl_tasks
                     SET status=:status, scheduled_for=:scheduled_for,
-                        finished_at=:finished_at, updated_at=:finished_at
+                        finished_at=GREATEST(:finished_at, started_at),
+                        updated_at=GREATEST(:finished_at, started_at)
                     WHERE id=:task_id AND status='running'
                     """
                 ),
@@ -1069,7 +1174,7 @@ class IngestionRunner:
         store: RunnerStore,
         configuration: RunConfiguration,
         source_job_id_from_url: Callable[[str], str],
-        transport_observer: FixtureTransport | None = None,
+        transport_observer: AttemptObserver | None = None,
         now: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
         retry_policy: Callable[[int | None, int, int | None], RetryDecision] | None = None,
@@ -1148,6 +1253,14 @@ class IngestionRunner:
                 break
             if url in seen_urls:
                 continue
+            if self._configuration.mode == "live" and not url_allowed_by_policy(
+                url,
+                self._configuration.approved_paths,
+                self._configuration.blocked_paths,
+            ):
+                raise PolicyViolationError(
+                    "discovered URL is blocked or not approved by source policy"
+                )
             source_job_id = self._source_job_id_from_url(url)
             if source_job_id in seen_ids:
                 continue
@@ -1177,8 +1290,28 @@ class IngestionRunner:
             observed = self._take_single_observed_attempt()
             occurred_at = observed.occurred_at if observed is not None else self._aware_now()
             category = _exception_category(error)
+            if isinstance(error, PolicyViolationError):
+                policy_error = CrawlErrorEvidence(
+                    stage="policy",
+                    category="policy_blocked",
+                    message=str(error),
+                    retryable=False,
+                    task_id=task.id,
+                    source_job_id=task.source_job_id,
+                    url=task.requested_url,
+                    error_code=type(error).__name__,
+                    details={"attempt_number": task.attempt_number},
+                )
+                status = self._store.fail_task(
+                    task,
+                    policy_error,
+                    occurred_at,
+                    RetryDecision(False, None),
+                )
+                return status == "failed"
+            outcome: FetchOutcome
             if category == "timeout":
-                outcome: FetchOutcome = "timeout"
+                outcome = "timeout"
             elif category == "network_error":
                 outcome = "network_error"
             else:
@@ -1208,7 +1341,7 @@ class IngestionRunner:
 
         duration_ms = max(0, round((self._monotonic() - started) * 1000))
         observed = self._take_single_observed_attempt()
-        headers = observed.response.headers if observed and observed.response else {}
+        headers = page.headers
         fixture_key = observed.fixture_key if observed is not None else None
         outcome = _http_outcome(page.status)
         evidence = FetchEvidence(
@@ -1352,7 +1485,7 @@ class IngestionRunner:
                     fetched_at=response.fetched_at,
                     response_headers=response.headers,
                 )
-                raw_decision = self._raw_decision(cast(FetchResult, response), attempt.fixture_key)
+                raw_decision = self._raw_decision(response, attempt.fixture_key)
             stored = self._store.persist_fetch(
                 run_id,
                 task_id,
@@ -1558,6 +1691,8 @@ def _http_outcome(status: int) -> FetchOutcome:
 
 
 def _fetch_category(evidence: FetchEvidence) -> ErrorCategory:
+    if evidence.outcome == "blocked_by_policy":
+        return "policy_blocked"
     if evidence.outcome == "timeout":
         return "timeout"
     if evidence.outcome == "network_error":
@@ -1568,6 +1703,8 @@ def _fetch_category(evidence: FetchEvidence) -> ErrorCategory:
 
 
 def _exception_category(error: Exception, *, parsing: bool = False) -> ErrorCategory:
+    if isinstance(error, PolicyViolationError):
+        return "policy_blocked"
     if isinstance(error, TimeoutError):
         return "timeout"
     if parsing:
@@ -1599,6 +1736,37 @@ def _parse_retry_after(headers: Mapping[str, str], now: datetime) -> int | None:
             return None
         seconds = round((retry_at - now).total_seconds())
     return seconds if 0 < seconds <= 300 else None
+
+
+def _validate_path_patterns(patterns: Sequence[str], field_name: str) -> None:
+    for pattern in patterns:
+        if not pattern or not pattern.startswith("/") or "?" in pattern or "#" in pattern:
+            raise ValueError(f"{field_name} must contain absolute URL-path patterns")
+
+
+def _path_matches(path: str, pattern: str) -> bool:
+    if pattern == "/":
+        return True
+    if any(character in pattern for character in "*["):
+        return fnmatchcase(path, pattern)
+    normalized = pattern.rstrip("/")
+    return path == normalized or path.startswith(f"{normalized}/")
+
+
+def url_blocked_by_policy(url: str, blocked_paths: Sequence[str]) -> bool:
+    path = urlparse(url).path or "/"
+    return any(_path_matches(path, pattern) for pattern in blocked_paths)
+
+
+def url_allowed_by_policy(
+    url: str, approved_paths: Sequence[str], blocked_paths: Sequence[str]
+) -> bool:
+    """Apply blocked-before-approved URL path policy semantics."""
+
+    path = urlparse(url).path or "/"
+    if url_blocked_by_policy(url, blocked_paths):
+        return False
+    return any(_path_matches(path, pattern) for pattern in approved_paths)
 
 
 def _isoformat(value: datetime | None) -> str | None:

@@ -12,6 +12,11 @@ missing fixture mapping never falls back to the network. Live transport is opt-i
 only after explicit source enablement and approval of the current policy. HTTP 403, blocked access,
 invalid source evidence, and schema rejection are not retried.
 
+The live transport receives the resolved policy minimum interval rather than assuming two seconds.
+Its response contract carries only allowlisted cache and retry metadata: content type/length, ETag,
+Last-Modified, Cache-Control, Retry-After, and Date. Cookie, Set-Cookie, authorization, CSRF,
+session, and unknown headers are discarded before ingestion persistence.
+
 When description storage is disabled, the adapter may parse it in memory but persists
 `description_raw=null` and `description_storage_suppressed=true`. Direct-payload hashes use the
 versioned canonical JSON contract described in

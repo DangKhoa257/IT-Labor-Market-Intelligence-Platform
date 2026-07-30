@@ -16,11 +16,16 @@ from uuid import UUID
 
 import sqlalchemy as sa
 
-from it_labor_market_intelligence.adapters.topdev import TOPDEV_IT_LISTING, extract_job_id
+from it_labor_market_intelligence.adapters.topdev import (
+    TOPDEV_IT_LISTING,
+    PoliteUrllibTransport,
+    extract_job_id,
+)
 
 from .adapters.topdev_registration import (
     BootstrapResult,
     EnableRejected,
+    ParserVersionConflict,
     PolicyState,
     SourceState,
     TopDevRegistration,
@@ -28,13 +33,17 @@ from .adapters.topdev_registration import (
     enable_topdev,
     register_topdev,
 )
-from .contracts import FixtureResponse, IngestionAdapter, JsonValue
+from .contracts import FetchTransport, FixtureResponse, IngestionAdapter, JsonValue
 from .runner import (
     FixtureTransport,
     IngestionRunner,
+    ObservedTransport,
+    PolicyEnforcingTransport,
     PostgreSQLRunnerStore,
     RunConfiguration,
     RunResult,
+    url_allowed_by_policy,
+    url_blocked_by_policy,
 )
 from .sanitization import sanitize_error
 
@@ -67,6 +76,7 @@ class RunPlan:
     policy_approved: bool
     policy_maximum: int
     fixture_dir: Path | None
+    requests_already_attempted: int = 0
 
     def safe_summary(self) -> dict[str, JsonValue]:
         return {
@@ -151,18 +161,6 @@ class PostgreSQLBootstrapRepository:
             ).scalar_one()
         )
 
-    def disable_source(self, source_id: UUID, at: datetime) -> None:
-        self._connection.execute(
-            sa.text(
-                """
-                UPDATE ingestion.sources
-                SET is_enabled=false, updated_at=:at
-                WHERE id=:source_id
-                """
-            ),
-            {"source_id": source_id, "at": at},
-        )
-
     def insert_default_policy(self, source_id: UUID, registration: TopDevRegistration) -> bool:
         result = self._connection.execute(
             sa.text(
@@ -176,7 +174,8 @@ class PostgreSQLBootstrapRepository:
                     allow_description_storage, notes
                 ) VALUES (
                     :source_id, :policy_version, 'not_reviewed', 'not_reviewed',
-                    '[]'::jsonb, '[]'::jsonb, 2.000, 30, 1, 30, 90,
+                    '["/viec-lam/*", "/detail-jobs/*"]'::jsonb,
+                    '[]'::jsonb, 2.000, 30, 1, 30, 90,
                     true, true, 'Bootstrap defaults; requires explicit robots and terms review.'
                 )
                 ON CONFLICT (source_id, policy_version) DO NOTHING
@@ -190,8 +189,11 @@ class PostgreSQLBootstrapRepository:
         row = self._connection.execute(
             sa.text(
                 """
-                SELECT id, maximum_requests_per_run, raw_retention_days,
-                       allow_raw_storage, allow_description_storage
+                SELECT id, policy_version, minimum_request_interval_seconds,
+                       maximum_requests_per_run, maximum_concurrent_requests,
+                       approved_paths, blocked_paths, raw_retention_days,
+                       description_retention_days, allow_raw_storage,
+                       allow_description_storage
                 FROM ingestion.source_policies
                 WHERE source_id=:source_id
                   AND robots_review_status='approved'
@@ -208,10 +210,16 @@ class PostgreSQLBootstrapRepository:
             return None
         return PolicyState(
             id=cast(UUID, row[0]),
-            maximum_requests_per_run=int(row[1]),
-            raw_retention_days=cast(int | None, row[2]),
-            allow_raw_storage=bool(row[3]),
-            allow_description_storage=bool(row[4]),
+            policy_version=str(row[1]),
+            minimum_request_interval_seconds=float(row[2]),
+            maximum_requests_per_run=int(row[3]),
+            maximum_concurrent_requests=int(row[4]),
+            approved_paths=_path_tuple(row[5], "approved_paths"),
+            blocked_paths=_path_tuple(row[6], "blocked_paths"),
+            raw_retention_days=cast(int | None, row[7]),
+            description_retention_days=cast(int | None, row[8]),
+            allow_raw_storage=bool(row[9]),
+            allow_description_storage=bool(row[10]),
         )
 
     def rotate_parser(
@@ -226,6 +234,59 @@ class PostgreSQLBootstrapRepository:
             sa.text("SELECT id FROM ingestion.sources WHERE id=:source_id FOR UPDATE"),
             {"source_id": source_id},
         ).one()
+        existing = self._connection.execute(
+            sa.text(
+                """
+                SELECT id, schema_version, configuration_hash
+                FROM ingestion.parser_versions
+                WHERE source_id=:source_id AND parser_name=:parser_name
+                  AND version=:version
+                FOR UPDATE
+                """
+            ),
+            {
+                "source_id": source_id,
+                "parser_name": registration.parser_name,
+                "version": registration.parser_version,
+            },
+        ).first()
+        if existing is not None and (
+            str(existing[1]) != registration.schema_version
+            or cast(str | None, existing[2]) != configuration_hash
+        ):
+            raise ParserVersionConflict(
+                "parser version already exists with different schema or configuration; "
+                "increment ADAPTER_VERSION"
+            )
+        if existing is None:
+            parser_id = cast(
+                UUID,
+                self._connection.execute(
+                    sa.text(
+                        """
+                        INSERT INTO ingestion.parser_versions (
+                            source_id, parser_name, version, schema_version,
+                            git_commit_sha, configuration_hash, is_active
+                        ) VALUES (
+                            :source_id, :parser_name, :version, :schema_version,
+                            :git_sha, :configuration_hash, false
+                        )
+                        RETURNING id
+                        """
+                    ),
+                    {
+                        "source_id": source_id,
+                        "parser_name": registration.parser_name,
+                        "version": registration.parser_version,
+                        "schema_version": registration.schema_version,
+                        "git_sha": git_commit_sha,
+                        "configuration_hash": configuration_hash,
+                    },
+                ).scalar_one(),
+            )
+        else:
+            parser_id = cast(UUID, existing[0])
+
         self._connection.execute(
             sa.text(
                 """
@@ -233,42 +294,25 @@ class PostgreSQLBootstrapRepository:
                 SET is_active=false,
                     retired_at=COALESCE(retired_at, GREATEST(:at, created_at))
                 WHERE source_id=:source_id AND parser_name=:parser_name
-                  AND is_active AND version!=:version
+                  AND is_active AND id!=:parser_id
                 """
             ),
             {
                 "source_id": source_id,
                 "parser_name": registration.parser_name,
-                "version": registration.parser_version,
+                "parser_id": parser_id,
                 "at": at,
             },
         )
         self._connection.execute(
             sa.text(
                 """
-                INSERT INTO ingestion.parser_versions (
-                    source_id, parser_name, version, schema_version,
-                    git_commit_sha, configuration_hash, is_active
-                ) VALUES (
-                    :source_id, :parser_name, :version, :schema_version,
-                    :git_sha, :configuration_hash, true
-                )
-                ON CONFLICT (source_id, parser_name, version) DO UPDATE SET
-                    schema_version=EXCLUDED.schema_version,
-                    git_commit_sha=EXCLUDED.git_commit_sha,
-                    configuration_hash=EXCLUDED.configuration_hash,
-                    is_active=true,
-                    retired_at=NULL
+                UPDATE ingestion.parser_versions
+                SET is_active=true, retired_at=NULL
+                WHERE id=:parser_id
                 """
             ),
-            {
-                "source_id": source_id,
-                "parser_name": registration.parser_name,
-                "version": registration.parser_version,
-                "schema_version": registration.schema_version,
-                "git_sha": git_commit_sha,
-                "configuration_hash": configuration_hash,
-            },
+            {"parser_id": parser_id},
         )
 
     def enable_source(self, source_id: UUID, at: datetime) -> None:
@@ -293,10 +337,12 @@ class PostgreSQLCLIService:
         *,
         now: Callable[[], datetime] | None = None,
         git_commit_sha: str | None = None,
+        live_transport_factory: Callable[[float], FetchTransport] | None = None,
     ) -> None:
         self._engine = engine
         self._now = now or (lambda: datetime.now(UTC))
         self._git_commit_sha = git_commit_sha
+        self._live_transport_factory = live_transport_factory or PoliteUrllibTransport
 
     def bootstrap_topdev(self, enable: bool) -> BootstrapResult:
         now = self._aware_now()
@@ -321,17 +367,24 @@ class PostgreSQLCLIService:
             raise CLIRejected("source must be topdev")
         now = self._aware_now()
         with self._engine.connect() as connection:
-            row = connection.execute(
-                sa.text(
-                    """
-                    SELECT source.id, source.is_enabled,
-                           policy.id, policy.robots_review_status,
+            row = (
+                connection.execute(
+                    sa.text(
+                        """
+                    SELECT source.id AS source_id, source.is_enabled,
+                           policy.id AS policy_id, policy.policy_version,
+                           policy.robots_review_status,
                            policy.terms_review_status,
+                           policy.minimum_request_interval_seconds,
                            policy.maximum_requests_per_run,
+                           policy.maximum_concurrent_requests,
+                           policy.approved_paths, policy.blocked_paths,
                            policy.raw_retention_days,
+                           policy.description_retention_days,
                            policy.allow_raw_storage,
                            policy.allow_description_storage,
-                           parser.id, parser.version, parser.schema_version
+                           parser.id AS parser_id, parser.version AS parser_version,
+                           parser.schema_version
                     FROM ingestion.sources AS source
                     JOIN LATERAL (
                         SELECT * FROM ingestion.source_policies
@@ -346,104 +399,159 @@ class PostgreSQLCLIService:
                      AND parser.is_active
                     WHERE source.slug='topdev'
                     """
-                ),
-                {"at": now},
-            ).first()
+                    ),
+                    {"at": now},
+                )
+                .mappings()
+                .first()
+            )
         if row is None:
             raise CLIRejected("TopDev source, current policy, or active parser is not configured")
 
-        policy_maximum = min(30, int(row[5]))
+        policy_maximum = min(30, int(row["maximum_requests_per_run"]))
         limit = min(10, policy_maximum) if request.limit is None else request.limit
         if not 1 <= limit <= policy_maximum:
             raise CLIRejected(f"limit must be between 1 and {policy_maximum}")
-        policy_approved = row[3] == "approved" and row[4] == "approved"
+        policy_approved = (
+            row["robots_review_status"] == "approved" and row["terms_review_status"] == "approved"
+        )
+        approved_paths = _path_tuple(row["approved_paths"], "approved_paths")
+        blocked_paths = _path_tuple(row["blocked_paths"], "blocked_paths")
         run_type, trigger_type = _trigger_types(request.trigger)
         configuration = RunConfiguration(
-            source_id=cast(UUID, row[0]),
+            source_id=cast(UUID, row["source_id"]),
             source_slug="topdev",
-            source_policy_id=cast(UUID, row[2]),
-            parser_version_id=cast(UUID, row[9]),
+            source_policy_id=cast(UUID, row["policy_id"]),
+            parser_version_id=cast(UUID, row["parser_id"]),
             requested_limit=limit,
             discovery_url=TOPDEV_IT_LISTING,
             mode=request.mode,
             run_type=run_type,
             trigger_type=trigger_type,
-            raw_retention_days=cast(int | None, row[6]),
-            allow_raw_storage=bool(row[7]),
-            allow_description_storage=bool(row[8]),
+            policy_version=str(row["policy_version"]),
+            minimum_request_interval_seconds=float(row["minimum_request_interval_seconds"]),
+            maximum_requests_per_run=int(row["maximum_requests_per_run"]),
+            maximum_concurrent_requests=int(row["maximum_concurrent_requests"]),
+            approved_paths=approved_paths,
+            blocked_paths=blocked_paths,
+            raw_retention_days=cast(int | None, row["raw_retention_days"]),
+            description_retention_days=cast(int | None, row["description_retention_days"]),
+            allow_raw_storage=bool(row["allow_raw_storage"]),
+            allow_description_storage=bool(row["allow_description_storage"]),
             fail_fast=request.fail_fast,
             git_commit_sha=self._git_commit_sha or discover_git_commit_sha(),
-            parser_version=str(row[10]),
-            record_schema_version=str(row[11]),
+            parser_version=str(row["parser_version"]),
+            record_schema_version=str(row["schema_version"]),
         )
-        return RunPlan(
+        plan = RunPlan(
             configuration=configuration,
-            source_enabled=bool(row[1]),
+            source_enabled=bool(row["is_enabled"]),
             policy_approved=policy_approved,
             policy_maximum=policy_maximum,
             fixture_dir=request.fixture_dir,
         )
+        _validate_plan(plan)
+        return plan
 
     def execute_run(self, plan: RunPlan) -> RunResult:
+        _validate_plan(plan)
         runner = self._runner_for_plan(plan)
         return runner.run()
 
     def retry_run(self, run_id: UUID, fixture_dir: Path | None) -> RunResult:
+        now = self._aware_now()
         with self._engine.connect() as connection:
-            row = connection.execute(
-                sa.text(
-                    """
+            row = (
+                connection.execute(
+                    sa.text(
+                        """
                     SELECT run.source_id, source.slug, run.source_policy_id,
                            run.parser_version_id, run.requested_limit,
                            run.configuration_json, run.run_type, run.trigger_type,
                            run.git_commit_sha, run.status,
-                           policy.raw_retention_days, policy.allow_raw_storage,
-                           policy.allow_description_storage,
-                           parser.version, parser.schema_version,
+                           parser.version AS parser_version, parser.schema_version,
                            source.is_enabled,
-                           policy.robots_review_status, policy.terms_review_status,
-                           policy.maximum_requests_per_run
+                           original_policy.robots_review_status AS original_robots_status,
+                           original_policy.terms_review_status AS original_terms_status,
+                           current_policy.robots_review_status AS current_robots_status,
+                           current_policy.terms_review_status AS current_terms_status,
+                           current_policy.blocked_paths AS current_blocked_paths,
+                           (SELECT count(*) FROM ingestion.fetch_events AS fetch_event
+                            WHERE fetch_event.crawl_run_id=run.id) AS attempted_requests
                     FROM ingestion.crawl_runs AS run
                     JOIN ingestion.sources AS source ON source.id=run.source_id
-                    JOIN ingestion.source_policies AS policy ON policy.id=run.source_policy_id
+                    JOIN ingestion.source_policies AS original_policy
+                      ON original_policy.id=run.source_policy_id
                     JOIN ingestion.parser_versions AS parser ON parser.id=run.parser_version_id
+                    LEFT JOIN LATERAL (
+                        SELECT policy.robots_review_status, policy.terms_review_status,
+                               policy.blocked_paths
+                        FROM ingestion.source_policies AS policy
+                        WHERE policy.source_id=run.source_id AND policy.valid_from<=:at
+                          AND (policy.valid_to IS NULL OR policy.valid_to>:at)
+                        ORDER BY policy.valid_from DESC, policy.created_at DESC, policy.id
+                        LIMIT 1
+                    ) AS current_policy ON true
                     WHERE run.id=:run_id
                     """
-                ),
-                {"run_id": run_id},
-            ).first()
+                    ),
+                    {"run_id": run_id, "at": now},
+                )
+                .mappings()
+                .first()
+            )
         if row is None:
             raise CLIRejected("crawl run was not found")
-        if row[9] != "running":
+        if row["status"] != "running":
             raise CLIRejected("only a running crawl run can be retried")
-        configuration_json = cast(Mapping[str, object], row[5])
-        mode: Literal["fixture", "live"] = (
-            "live" if configuration_json.get("mode") == "live" else "fixture"
+        configuration = _configuration_from_snapshot(
+            cast(Mapping[str, object], row["configuration_json"]),
+            source_id=cast(UUID, row["source_id"]),
+            source_slug=str(row["slug"]),
+            source_policy_id=cast(UUID, row["source_policy_id"]),
+            parser_version_id=cast(UUID, row["parser_version_id"]),
+            requested_limit=int(row["requested_limit"]),
+            run_type=cast(Any, row["run_type"]),
+            trigger_type=cast(Any, row["trigger_type"]),
+            git_commit_sha=cast(str | None, row["git_commit_sha"]),
+            parser_version=str(row["parser_version"]),
+            schema_version=str(row["schema_version"]),
         )
-        configuration = RunConfiguration(
-            source_id=cast(UUID, row[0]),
-            source_slug=str(row[1]),
-            source_policy_id=cast(UUID, row[2]),
-            parser_version_id=cast(UUID, row[3]),
-            requested_limit=int(row[4]),
-            discovery_url=TOPDEV_IT_LISTING,
-            mode=mode,
-            run_type=cast(Any, row[6]),
-            trigger_type=cast(Any, row[7]),
-            raw_retention_days=cast(int | None, row[10]),
-            allow_raw_storage=bool(row[11]),
-            allow_description_storage=bool(row[12]),
-            fail_fast=bool(configuration_json.get("fail_fast", False)),
-            git_commit_sha=cast(str | None, row[8]),
-            parser_version=str(row[13]),
-            record_schema_version=str(row[14]),
-        )
+        if configuration.mode == "live":
+            if not bool(row["is_enabled"]):
+                raise CLIRejected("live retry is no longer authorized because source is disabled")
+            if (
+                row["original_robots_status"] != "approved"
+                or row["original_terms_status"] != "approved"
+                or row["current_robots_status"] != "approved"
+                or row["current_terms_status"] != "approved"
+            ):
+                raise CLIRejected("live retry is no longer authorized by source policy")
+            current_blocked = _path_tuple(row["current_blocked_paths"], "blocked_paths")
+            with self._engine.connect() as connection:
+                continuation_urls = connection.scalars(
+                    sa.text(
+                        """
+                        SELECT requested_url FROM ingestion.crawl_tasks
+                        WHERE crawl_run_id=:run_id AND status IN ('pending', 'running')
+                          AND requested_url IS NOT NULL
+                        ORDER BY id
+                        """
+                    ),
+                    {"run_id": run_id},
+                ).all()
+            if any(url_blocked_by_policy(str(url), current_blocked) for url in continuation_urls):
+                raise CLIRejected("live retry is blocked by the current source policy")
         plan = RunPlan(
             configuration=configuration,
-            source_enabled=bool(row[15]),
-            policy_approved=row[16] == "approved" and row[17] == "approved",
-            policy_maximum=int(row[18]),
+            source_enabled=bool(row["is_enabled"]),
+            policy_approved=(
+                row["current_robots_status"] == "approved"
+                and row["current_terms_status"] == "approved"
+            ),
+            policy_maximum=min(30, configuration.maximum_requests_per_run),
             fixture_dir=fixture_dir,
+            requests_already_attempted=int(row["attempted_requests"]),
         )
         _validate_plan(plan)
         return self._runner_for_plan(plan).resume(run_id)
@@ -494,13 +602,25 @@ class PostgreSQLCLIService:
 
     def _runner_for_plan(self, plan: RunPlan) -> IngestionRunner:
         registration = TopDevRegistration()
-        observer: FixtureTransport | None = None
+        observer: FixtureTransport | ObservedTransport | None = None
         if plan.configuration.mode == "fixture":
             fixture_dir = plan.fixture_dir or Path("tests/fixtures/topdev")
             observer = _fixture_transport(fixture_dir, self._aware_now())
             adapter = registration.adapter(observer)
         else:
-            adapter = registration.adapter()
+            live_transport = self._live_transport_factory(
+                plan.configuration.minimum_request_interval_seconds
+            )
+            observer = ObservedTransport(live_transport, now=self._now)
+            policy_transport = PolicyEnforcingTransport(
+                observer,
+                approved_paths=plan.configuration.approved_paths,
+                blocked_paths=plan.configuration.blocked_paths,
+                maximum_requests=plan.configuration.maximum_requests_per_run,
+                maximum_concurrent_requests=plan.configuration.maximum_concurrent_requests,
+                initial_request_count=plan.requests_already_attempted,
+            )
+            adapter = registration.adapter(policy_transport)
         return IngestionRunner(
             adapter=cast(IngestionAdapter, adapter),
             store=PostgreSQLRunnerStore(self._engine),
@@ -637,11 +757,109 @@ def _validate_plan(plan: RunPlan) -> None:
     if configuration.mode == "live":
         if not plan.source_enabled or not plan.policy_approved:
             raise CLIRejected("live mode requires an enabled source and approved current policy")
+        if not url_allowed_by_policy(
+            configuration.discovery_url,
+            configuration.approved_paths,
+            configuration.blocked_paths,
+        ):
+            raise CLIRejected("live discovery URL is blocked or not approved by source policy")
         return
     if configuration.trigger_type != "test" and (
         not plan.source_enabled or not plan.policy_approved
     ):
         raise CLIRejected("fixture mode with a disabled or unapproved source requires trigger=test")
+
+
+def _path_tuple(value: object, field_name: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise CLIRejected(f"{field_name} must be a JSON array of URL-path patterns")
+    paths = tuple(cast(list[str], value))
+    if any(not path.startswith("/") or "?" in path or "#" in path for path in paths):
+        raise CLIRejected(f"{field_name} contains an invalid URL-path pattern")
+    return paths
+
+
+def _snapshot_value(snapshot: Mapping[str, object], key: str) -> object:
+    if key not in snapshot:
+        raise CLIRejected(f"crawl run policy snapshot is missing {key}")
+    return snapshot[key]
+
+
+def _snapshot_int(snapshot: Mapping[str, object], key: str) -> int:
+    value = _snapshot_value(snapshot, key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CLIRejected(f"crawl run policy snapshot has invalid {key}")
+    return value
+
+
+def _snapshot_optional_int(snapshot: Mapping[str, object], key: str) -> int | None:
+    value = _snapshot_value(snapshot, key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CLIRejected(f"crawl run policy snapshot has invalid {key}")
+    return value
+
+
+def _snapshot_bool(snapshot: Mapping[str, object], key: str) -> bool:
+    value = _snapshot_value(snapshot, key)
+    if not isinstance(value, bool):
+        raise CLIRejected(f"crawl run policy snapshot has invalid {key}")
+    return value
+
+
+def _configuration_from_snapshot(
+    snapshot: Mapping[str, object],
+    *,
+    source_id: UUID,
+    source_slug: str,
+    source_policy_id: UUID,
+    parser_version_id: UUID,
+    requested_limit: int,
+    run_type: Any,
+    trigger_type: Any,
+    git_commit_sha: str | None,
+    parser_version: str,
+    schema_version: str,
+) -> RunConfiguration:
+    mode_value = _snapshot_value(snapshot, "mode")
+    if mode_value not in {"fixture", "live"}:
+        raise CLIRejected("crawl run policy snapshot has invalid mode")
+    interval = _snapshot_value(snapshot, "minimum_request_interval_seconds")
+    if isinstance(interval, bool) or not isinstance(interval, (int, float)):
+        raise CLIRejected("crawl run policy snapshot has invalid minimum_request_interval_seconds")
+    snapshot_limit = _snapshot_int(snapshot, "requested_limit")
+    if snapshot_limit != requested_limit:
+        raise CLIRejected("crawl run requested limit does not match its immutable snapshot")
+    discovery_url = _snapshot_value(snapshot, "discovery_url")
+    policy_version = _snapshot_value(snapshot, "policy_version")
+    if not isinstance(discovery_url, str) or not isinstance(policy_version, str):
+        raise CLIRejected("crawl run policy snapshot has invalid string values")
+    return RunConfiguration(
+        source_id=source_id,
+        source_slug=source_slug,
+        source_policy_id=source_policy_id,
+        parser_version_id=parser_version_id,
+        requested_limit=requested_limit,
+        discovery_url=discovery_url,
+        mode=cast(Literal["fixture", "live"], mode_value),
+        run_type=cast(Any, run_type),
+        trigger_type=cast(Any, trigger_type),
+        policy_version=policy_version,
+        minimum_request_interval_seconds=float(interval),
+        maximum_requests_per_run=_snapshot_int(snapshot, "maximum_requests_per_run"),
+        maximum_concurrent_requests=_snapshot_int(snapshot, "maximum_concurrent_requests"),
+        approved_paths=_path_tuple(_snapshot_value(snapshot, "approved_paths"), "approved_paths"),
+        blocked_paths=_path_tuple(_snapshot_value(snapshot, "blocked_paths"), "blocked_paths"),
+        raw_retention_days=_snapshot_optional_int(snapshot, "raw_retention_days"),
+        description_retention_days=_snapshot_optional_int(snapshot, "description_retention_days"),
+        allow_raw_storage=_snapshot_bool(snapshot, "allow_raw_storage"),
+        allow_description_storage=_snapshot_bool(snapshot, "allow_description_storage"),
+        fail_fast=_snapshot_bool(snapshot, "fail_fast"),
+        git_commit_sha=git_commit_sha,
+        parser_version=parser_version,
+        record_schema_version=schema_version,
+    )
 
 
 def _trigger_types(

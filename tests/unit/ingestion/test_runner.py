@@ -34,6 +34,7 @@ from it_labor_market_intelligence.ingestion.runner import (
     StoredFetch,
     TaskStatus,
     recover_stale_tasks,
+    url_allowed_by_policy,
 )
 
 NOW = datetime(2026, 7, 30, 3, 0, tzinfo=UTC)
@@ -42,6 +43,18 @@ POLICY_ID = UUID("00000000-0000-0000-0000-000000000002")
 PARSER_ID = UUID("00000000-0000-0000-0000-000000000003")
 JOB_1 = "https://topdev.vn/viec-lam/example-one-1001"
 JOB_2 = "https://topdev.vn/viec-lam/example-two-1002"
+
+
+def test_blocked_paths_take_precedence_over_approved_paths() -> None:
+    approved = ("/viec-lam/*",)
+    blocked = ("/viec-lam/private/*",)
+
+    assert url_allowed_by_policy(JOB_1, approved, blocked) is True
+    assert (
+        url_allowed_by_policy("https://topdev.vn/viec-lam/private/example-1003", approved, blocked)
+        is False
+    )
+    assert url_allowed_by_policy("https://topdev.vn/companies/example", approved, blocked) is False
 
 
 class ScriptedAdapter:

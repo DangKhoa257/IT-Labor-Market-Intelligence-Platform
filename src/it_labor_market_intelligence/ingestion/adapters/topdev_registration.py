@@ -17,11 +17,17 @@ from it_labor_market_intelligence.adapters.topdev import (
     TopDevAdapter,
 )
 
+from ..contracts import FetchTransport
+
 _GIT_SHA = re.compile(r"^[0-9a-fA-F]{7,64}$")
 
 
 class EnableRejected(ValueError):
     """Raised when an operator requests enablement without an approved policy."""
+
+
+class ParserVersionConflict(ValueError):
+    """Raised when immutable parser identity is reused for different behavior."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +39,14 @@ class SourceState:
 @dataclass(frozen=True, slots=True)
 class PolicyState:
     id: UUID
+    policy_version: str
+    minimum_request_interval_seconds: float
     maximum_requests_per_run: int
+    maximum_concurrent_requests: int
+    approved_paths: tuple[str, ...]
+    blocked_paths: tuple[str, ...]
     raw_retention_days: int | None
+    description_retention_days: int | None
     allow_raw_storage: bool
     allow_description_storage: bool
 
@@ -82,16 +94,14 @@ class TopDevRegistration:
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
-    def adapter(self, transport: object | None = None) -> TopDevAdapter:
-        return TopDevAdapter(transport=transport)  # type: ignore[arg-type]
+    def adapter(self, transport: FetchTransport | None = None) -> TopDevAdapter:
+        return TopDevAdapter(transport=transport)
 
 
 class BootstrapRepository(Protocol):
     """Persistence operations required for TopDev registration."""
 
     def upsert_source(self, registration: TopDevRegistration) -> SourceState: ...
-
-    def disable_source(self, source_id: UUID, at: datetime) -> None: ...
 
     def has_reviewed_policy(self, source_id: UUID) -> bool: ...
 
@@ -118,12 +128,10 @@ def register_topdev(
     git_commit_sha: str | None = None,
     now: datetime,
 ) -> BootstrapResult:
-    """Register source/policy/parser without ever enabling the source."""
+    """Register source/policy/parser without changing existing enablement."""
 
     definition = registration or TopDevRegistration()
     source = repository.upsert_source(definition)
-    repository.disable_source(source.id, now)
-    source = SourceState(source.id, False)
     policy_created = False
     if not repository.has_reviewed_policy(source.id):
         policy_created = repository.insert_default_policy(source.id, definition)

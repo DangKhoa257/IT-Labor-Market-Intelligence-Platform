@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from email.message import Message
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
 from it_labor_market_intelligence.adapters import FetchResult, TopDevAdapter
-from it_labor_market_intelligence.adapters.topdev import TOPDEV_IT_LISTING, extract_job_id
+from it_labor_market_intelligence.adapters.topdev import (
+    TOPDEV_IT_LISTING,
+    PoliteCurlTransport,
+    PoliteUrllibTransport,
+    extract_job_id,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPOSITORY_ROOT / "tests" / "fixtures" / "source_verification" / "topdev"
@@ -292,3 +303,64 @@ def test_missing_required_json_ld_fields_rejects_record() -> None:
     page = _page("job_2121360.json", "2121360", title=None)
     with pytest.raises(ValueError, match="Required title/description missing"):
         TopDevAdapter().extract_raw_record(page)
+
+
+def test_urllib_transport_exposes_only_safe_http_error_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = Message()
+    headers["Content-Type"] = "text/html"
+    headers["ETag"] = '"fixture-etag"'
+    headers["Last-Modified"] = "Wed, 29 Jul 2026 10:00:00 GMT"
+    headers["Retry-After"] = "17"
+    headers["Set-Cookie"] = "session=SECRET"
+    error = HTTPError(
+        "https://topdev.vn/viec-lam/fixture-429",
+        429,
+        "rate limited",
+        headers,
+        BytesIO(b"rate limited"),
+    )
+
+    def raise_http_error(*args: object, **kwargs: object) -> object:
+        raise error
+
+    monkeypatch.setattr(urllib.request, "urlopen", raise_http_error)
+    response = PoliteUrllibTransport(minimum_interval_seconds=0)(error.url)
+
+    assert response.status == 429
+    assert response.headers["ETag"] == '"fixture-etag"'
+    assert response.headers["Last-Modified"] == "Wed, 29 Jul 2026 10:00:00 GMT"
+    assert response.headers["Retry-After"] == "17"
+    assert "Set-Cookie" not in response.headers
+
+
+def test_curl_transport_exposes_allowlisted_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _: "curl")
+    header_json = json.dumps(
+        {
+            "content-type": "text/html",
+            "etag": ['"curl-etag"'],
+            "last-modified": "Wed, 29 Jul 2026 11:00:00 GMT",
+            "retry-after": "23",
+            "x-csrf-token": "SECRET",
+        }
+    )
+    stdout = (
+        b"body\n__TOPDEV_PILOT_META__200\thttps://topdev.vn/viec-lam/curl-123"
+        + b"\ttext/html\t"
+        + header_json.encode()
+    )
+    completed = subprocess.CompletedProcess(["curl"], 0, stdout=stdout, stderr=b"")
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed)
+
+    response = PoliteCurlTransport(minimum_interval_seconds=0)(
+        "https://topdev.vn/viec-lam/curl-123"
+    )
+
+    assert response.headers == {
+        "content-type": "text/html",
+        "etag": '"curl-etag"',
+        "last-modified": "Wed, 29 Jul 2026 11:00:00 GMT",
+        "retry-after": "23",
+    }

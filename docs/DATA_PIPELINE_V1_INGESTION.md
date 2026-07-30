@@ -47,7 +47,8 @@ time, parser/schema version, response hash, and direct-payload hash preserve evi
 
 `bootstrap-topdev` idempotently registers:
 
-- source slug `topdev`, disabled on every bootstrap unless `--enable` is explicitly supplied;
+- source slug `topdev`, disabled on first registration and thereafter preserving existing
+  enablement unless `--enable` is explicitly requested;
 - an unreviewed `topdev-policy-v1` only when no reviewed policy exists;
 - parser `TopDevAdapter`, version `topdev.v1`, schema
   `source-raw-job-record.v1`;
@@ -55,9 +56,14 @@ time, parser/schema version, response hash, and direct-payload hash preserve evi
 - the current Git commit SHA when it can be read safely.
 
 Reviewed policies are never rewritten by bootstrap. Enabling performs a separate check for a
-currently valid policy whose robots and terms statuses are both `approved`. Parser registration
-locks the source, retires the former active parser, and activates the requested version without
-creating duplicates.
+currently valid policy whose robots and terms statuses are both `approved`. Rerunning bootstrap
+without `--enable` does not disable an already-enabled source.
+
+Parser version, schema version, configuration hash, and original Git commit form immutable parser
+provenance. An identical semantic identity is reused without metadata updates. Reusing a version
+with a changed schema or configuration is rejected and requires an `ADAPTER_VERSION` increment. A
+new row is inserted successfully before the previous active row is retired. The crawl run retains
+its own build commit separately in `crawl_runs.git_commit_sha`.
 
 ## Fixture and live modes
 
@@ -66,9 +72,11 @@ fixtures using `FixtureTransport`; a missing mapping fails instead of falling ba
 A disabled or unapproved source can be exercised only with `--trigger test`.
 
 Live mode is opt-in with `--mode live`. It requires both an enabled source and a currently approved
-policy. The existing TopDev transport remains bounded to public GET requests, a descriptive user
-agent, a minimum interval, limited redirects, and no login, CAPTCHA bypass, proxy rotation, or 403
-retry. Nothing schedules live mode automatically.
+policy. Blocked paths override approved paths, and discovery plus every detail request is checked
+before transport work. A policy wrapper enforces the total request count and maximum concurrency,
+while the resolved policy interval is passed to the TopDev transport even when greater than two
+seconds. The transport remains bounded to public GET requests, limited redirects, and no login,
+CAPTCHA bypass, proxy rotation, or 403 retry. Nothing schedules live mode automatically.
 
 ## Run and task lifecycle
 
@@ -102,6 +110,10 @@ Every actual transport attempt creates one `ingestion.fetch_events` row, includi
 timeouts, and HTTP failures. Request/response headers pass through a fixed allowlist; authorization,
 cookies, tokens, unknown headers, and raw bodies are not persisted or printed.
 
+Live and fixture responses carry the same safe response metadata contract. `Content-Type`,
+`Content-Length`, `ETag`, `Last-Modified`, `Cache-Control`, `Retry-After`, and `Date` may be
+persisted. Cookie, Set-Cookie, authorization, CSRF, session, and unknown headers are discarded.
+
 Default detail retry behavior is:
 
 - attempt 1 retry: scheduled after 5 seconds;
@@ -115,7 +127,10 @@ evidence, scope rejection, and schema rejection are not retried. Tests inject im
 production code never sleeps inside a test or transaction.
 
 `retry-run` resumes due tasks only for an existing `running` crawl run. It does not reopen a
-terminal run. `requeue-stale` changes stale `running` tasks to `pending` when attempts remain and to
+terminal run. It reconstructs behavior from the immutable policy snapshot in
+`crawl_runs.configuration_json`, not current mutable limits or retention values. Live continuation
+also rechecks current enablement, approval, and newly blocked paths and rejects unauthorized
+continuation. `requeue-stale` changes stale `running` tasks to `pending` when attempts remain and to
 `failed` when exhausted. Terminal runs are excluded from recovery.
 
 A fetch failure never marks a posting inactive.
@@ -125,6 +140,11 @@ A fetch failure never marks a posting inactive.
 The SHA-256 is calculated over exact response bytes and stored as 64 lowercase hexadecimal
 characters. `raw_objects.sha256` is globally unique; an atomic PostgreSQL upsert makes concurrent
 identical bodies share one row. A changed byte sequence creates new evidence.
+
+For identical bytes and byte size, the first valid storage location is preserved and retention can
+only become safer: a later expiry extends it, a shorter expiry cannot reduce it, and null expiry
+means indefinite retention. A same SHA-256 with a different byte size is rejected. These rules are
+applied atomically under concurrent upserts.
 
 Storage decisions are explicit:
 

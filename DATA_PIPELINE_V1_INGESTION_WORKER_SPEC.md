@@ -196,8 +196,10 @@ source_type = job_board
 country_code = VN
 ```
 
-The source must remain disabled unless the operator passes `--enable` and a
-currently valid approved policy exists.
+The source is disabled when first registered. Later idempotent bootstrap runs
+without `--enable` preserve existing enablement; bootstrap is registration, not
+an implicit disable operation. `--enable` still requires a currently valid
+approved policy.
 
 ### `ingestion.source_policies`
 
@@ -229,6 +231,11 @@ schema_version = source-raw-job-record.v1
 
 Include git commit SHA when available and a deterministic configuration hash.
 Only one parser version per source may be active by application behavior.
+
+Parser identity is immutable. Reusing a version is allowed only when its schema
+version and configuration hash are identical, and must not rewrite the original
+Git commit. A semantic or configuration change requires incrementing
+`ADAPTER_VERSION`. Insert a new version before retiring the previous active row.
 
 ---
 
@@ -324,6 +331,14 @@ TopDev timeout, redirect, user-agent, rate, and no-bypass behavior.
 
 Create a `crawl_runs` row before discovery with source, policy, parser, pipeline
 version when available, requested limit, configuration JSON, and git SHA.
+
+`configuration_json` is an immutable execution snapshot containing policy
+version, request interval, request and concurrency limits, approved and blocked
+paths, raw and description retention, storage permissions, mode, discovery URL,
+parser/schema versions, and fail-fast behavior. `retry-run` reconstructs from
+this snapshot, never from mutable current policy values. It may reject live
+continuation when the source is disabled, authorization is revoked, or a new
+blocked path applies.
 
 Expected lifecycle:
 
@@ -530,6 +545,11 @@ expires_at = fetched_at + retention days
 
 Unknown retention remains null. No deletion is executed.
 
+When identical bytes already exist, the raw-object ID and valid storage
+location are reused. Retention is never shortened: later expiry wins, and NULL
+means indefinite retention. The atomic conflict update rejects a matching
+SHA-256 with a different byte size and is safe under concurrent upserts.
+
 ---
 
 ## 15. Extraction runs and records
@@ -646,6 +666,12 @@ approved/blocked paths
 raw-storage permission
 description-storage permission
 ```
+
+Blocked paths take precedence over approved paths. Validate the discovery URL
+and every detail URL before live transport work. Count every actual request
+across initial and retry invocations, keep execution at or below approved
+concurrency, and pass the resolved policy interval to the live transport even
+when it is greater than the adapter default.
 
 When description storage is disabled, the adapter may inspect description in
 memory but the persisted direct payload must omit/null it and record a safe

@@ -79,7 +79,12 @@ def _configuration(engine: sa.Engine) -> RunConfiguration:
         row = connection.execute(
             sa.text(
                 """
-                SELECT source.id, policy.id, parser.id, parser.version, parser.schema_version
+                SELECT source.id, policy.id, parser.id, parser.version, parser.schema_version,
+                       policy.policy_version, policy.minimum_request_interval_seconds,
+                       policy.maximum_requests_per_run, policy.maximum_concurrent_requests,
+                       policy.approved_paths, policy.blocked_paths,
+                       policy.raw_retention_days, policy.description_retention_days,
+                       policy.allow_raw_storage, policy.allow_description_storage
                 FROM ingestion.sources AS source
                 JOIN ingestion.source_policies AS policy ON policy.source_id=source.id
                 JOIN ingestion.parser_versions AS parser
@@ -98,6 +103,16 @@ def _configuration(engine: sa.Engine) -> RunConfiguration:
         mode="fixture",
         run_type="test",
         trigger_type="test",
+        policy_version=str(row[5]),
+        minimum_request_interval_seconds=float(row[6]),
+        maximum_requests_per_run=int(row[7]),
+        maximum_concurrent_requests=int(row[8]),
+        approved_paths=tuple(cast(list[str], row[9])),
+        blocked_paths=tuple(cast(list[str], row[10])),
+        raw_retention_days=cast(int | None, row[11]),
+        description_retention_days=cast(int | None, row[12]),
+        allow_raw_storage=bool(row[13]),
+        allow_description_storage=bool(row[14]),
         parser_version=str(row[3]),
         record_schema_version=str(row[4]),
     )
@@ -114,8 +129,10 @@ def test_two_connections_upserting_identical_bytes_reuse_one_raw_object(
     body = b"EXAMPLE_NOT_REAL_DATA concurrent immutable bytes"
     sha256 = hashlib.sha256(body).hexdigest()
     barrier = threading.Barrier(2)
+    base = datetime(2026, 7, 30, tzinfo=UTC)
+    expiries = (base + timedelta(days=10), base + timedelta(days=90))
 
-    def upsert() -> int:
+    def upsert(expires_at: datetime) -> int:
         with engine.begin() as connection:
             _set_timeouts(connection)
             barrier.wait(timeout=5)
@@ -124,12 +141,12 @@ def test_two_connections_upserting_identical_bytes_reuse_one_raw_object(
                 sha256,
                 len(body),
                 "tests/fixtures/topdev/job_active.html",
-                datetime.now(UTC) + timedelta(days=30),
+                expires_at,
                 mime_type="text/html",
             )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        raw_ids = list(executor.map(lambda _: upsert(), range(2)))
+        raw_ids = list(executor.map(upsert, expiries))
 
     assert raw_ids[0] == raw_ids[1]
     with engine.connect() as connection:
@@ -140,6 +157,10 @@ def test_two_connections_upserting_identical_bytes_reuse_one_raw_object(
             )
             == 1
         )
+        assert connection.scalar(
+            sa.text("SELECT expires_at FROM ingestion.raw_objects WHERE sha256=:sha256"),
+            {"sha256": sha256},
+        ) == max(expiries)
 
 
 def test_two_connections_claiming_one_task_have_one_successful_claim(

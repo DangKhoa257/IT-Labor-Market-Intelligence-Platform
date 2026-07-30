@@ -14,6 +14,11 @@ task lifecycle, retry policy, raw SHA-256 identity, extraction persistence, safe
 database-derived counters. Repository methods enforce source lineage and use short transactions;
 claims commit before any transport call, and parsing also occurs outside database locks.
 
+Each crawl run snapshots the complete behavior-affecting source policy. Retry execution uses that
+snapshot while rechecking current live authorization and newly blocked paths. Parser semantic
+identity is immutable, and deduplicated raw evidence preserves its first storage location while
+retention can only be extended or made indefinite.
+
 The complete evidence chain is `sources -> source_policies -> parser_versions -> crawl_runs ->
 crawl_tasks -> fetch_events -> raw_objects -> extraction_runs -> extracted_records`, with
 `crawl_errors` attached to the run/task/fetch context. Fixture, inline, suppressed, and external raw

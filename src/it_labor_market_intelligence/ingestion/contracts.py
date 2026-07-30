@@ -100,4 +100,5 @@ class FixtureResponse:
             body=self.body,
             fetched_at=self.fetched_at,
             content_type=self.content_type,
+            headers=dict(self.headers),
         )
